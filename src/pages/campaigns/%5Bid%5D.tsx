@@ -3,36 +3,6 @@ import { useRouter } from 'next/router';
 import Layout from '@/components/Layout';
 import { useCampaign, donateToCampaign } from '@/utils/anchor-client';
 import { useWallet } from '@solana/wallet-adapter-react';
-import {
-  Box,
-  Button,
-  Flex,
-  Heading,
-  Text,
-  Image,
-  Progress,
-  VStack,
-  HStack,
-  Badge,
-  useDisclosure,
-  Spinner,
-  Center,
-  Alert,
-  AlertIcon,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper,
-} from '@chakra-ui/react';
-import { CalendarIcon, TimeIcon } from '@chakra-ui/icons';
 import Head from 'next/head';
 import CardPaymentModal from '@/components/CardPaymentModal';
 
@@ -42,20 +12,22 @@ export default function CampaignDetail() {
   const wallet = useWallet();
   const { campaign, loading, error } = useCampaign(id as string);
   const [donationAmount, setDonationAmount] = useState(10);
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const {
-    isOpen: isCardPaymentOpen,
-    onOpen: onCardPaymentOpen,
-    onClose: onCardPaymentClose,
-  } = useDisclosure();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCardPaymentOpen, setIsCardPaymentOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Open and close handlers
+  const openModal = () => setIsModalOpen(true);
+  const closeModal = () => setIsModalOpen(false);
+  const openCardPayment = () => setIsCardPaymentOpen(true);
+  const closeCardPayment = () => setIsCardPaymentOpen(false);
 
   if (loading) {
     return (
       <Layout>
-        <Center h="500px">
-          <Spinner size="xl" color="blue.500" />
-        </Center>
+        <div className="h-[500px] flex items-center justify-center">
+          <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-blue-500 border-r-transparent"></div>
+        </div>
       </Layout>
     );
   }
@@ -63,10 +35,9 @@ export default function CampaignDetail() {
   if (error) {
     return (
       <Layout>
-        <Alert status="error" mt={8}>
-          <AlertIcon />
-          Error loading campaign: {error.message}
-        </Alert>
+        <div className="mt-8 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">Error loading campaign: {error.message}</span>
+        </div>
       </Layout>
     );
   }
@@ -74,48 +45,43 @@ export default function CampaignDetail() {
   if (!campaign) {
     return (
       <Layout>
-        <Alert status="warning" mt={8}>
-          <AlertIcon />
-          Campaign not found
-        </Alert>
+        <div className="mt-8 bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">Campaign not found</span>
+        </div>
       </Layout>
     );
   }
 
-  const fundingProgress = campaign.currentAmount && campaign.targetAmount
-    ? (campaign.currentAmount.toNumber() / campaign.targetAmount.toNumber()) * 100
-    : 0;
-    
-  const daysLeft = campaign.endDate
-    ? Math.max(0, Math.ceil((new Date(campaign.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+  // Calculate funding percentage
+  const fundingPercentage = campaign.currentAmount && campaign.targetAmount
+    ? Math.min(100, Math.round((campaign.currentAmount.toNumber() / campaign.targetAmount.toNumber()) * 100))
     : 0;
 
-  const isDonationDisabled = !wallet.connected || campaign.fundsReleased || !campaign.isActive;
+  // Calculate days left
+  const endDate = campaign.endDate ? new Date(campaign.endDate) : null;
+  const daysLeft = endDate
+    ? Math.max(0, Math.ceil((endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
+  // Handle donation
   const handleDonate = async () => {
     if (!wallet.connected) {
+      alert('Please connect your wallet to donate');
       return;
     }
 
     try {
       setIsSubmitting(true);
-      
-      // Convert to lamports or the smallest denomination
-      const amountInSmallestUnit = donationAmount * 1_000_000_000; // Convert to lamports or equivalent
-      
-      await donateToCampaign(
-        campaign.pubkey.toString(),
-        amountInSmallestUnit
-      );
-      
-      // Reload the page to show updated donation amount
-      router.reload();
-    } catch (error) {
-      console.error('Error donating:', error);
-      alert(`Error donating: ${error.message}`);
+      const txId = await donateToCampaign(id as string, donationAmount);
+      alert(`Donation successful! Transaction ID: ${txId}`);
+      closeModal();
+      // Refresh data
+      window.location.reload();
+    } catch (err) {
+      console.error('Donation error:', err);
+      alert(`Error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
-      onClose();
     }
   };
 
@@ -126,167 +92,149 @@ export default function CampaignDetail() {
         <meta name="description" content={campaign.description} />
       </Head>
 
-      <Box maxW="1200px" mx="auto" p={4}>
-        <Box
-          borderWidth="1px"
-          borderRadius="lg"
-          overflow="hidden"
-          boxShadow="lg"
-          bg="white"
-        >
-          <Flex direction={{ base: 'column', md: 'row' }}>
-            <Box width={{ base: '100%', md: '50%' }} position="relative">
-              <Image
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          {/* Campaign Header */}
+          <div className="md:flex">
+            <div className="md:w-1/2">
+              <img
                 src={campaign.imageUrl || 'https://via.placeholder.com/800x600?text=No+Image'}
                 alt={campaign.name}
-                w="100%"
-                h="400px"
-                objectFit="cover"
+                className="w-full h-[400px] object-cover"
               />
-              <Badge
-                colorScheme={campaign.isActive ? 'green' : 'red'}
-                position="absolute"
-                top="4"
-                right="4"
-                fontSize="sm"
-              >
-                {campaign.isActive ? 'Active' : 'Ended'}
-              </Badge>
-            </Box>
-
-            <Box p={6} width={{ base: '100%', md: '50%' }}>
-              <Heading as="h1" size="xl" mb={4}>
-                {campaign.name}
-              </Heading>
-
-              <HStack spacing={4} mb={4}>
-                <Badge colorScheme="purple">{campaign.category}</Badge>
-                <Flex align="center">
-                  <CalendarIcon mr={1} />
-                  <Text fontSize="sm">
-                    {daysLeft} days left
-                  </Text>
-                </Flex>
-              </HStack>
-
-              <VStack align="stretch" spacing={4} mb={6}>
-                <Box>
-                  <Flex justify="space-between" mb={1}>
-                    <Text fontWeight="bold">
-                      ${campaign.currentAmount.toNumber().toLocaleString()} raised
-                    </Text>
-                    <Text>
-                      of ${campaign.targetAmount.toNumber().toLocaleString()} goal
-                    </Text>
-                  </Flex>
-                  <Progress
-                    value={fundingProgress}
-                    size="md"
-                    colorScheme="green"
-                    borderRadius="full"
+            </div>
+            <div className="md:w-1/2 p-6">
+              <h1 className="text-3xl font-bold mb-2">{campaign.name}</h1>
+              
+              <div className="flex items-center mb-4">
+                <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
+                  {campaign.category}
+                </span>
+                <span className="ml-2 text-sm text-gray-500 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {daysLeft} days left
+                </span>
+              </div>
+              
+              <div className="mb-4">
+                <div className="flex justify-between mb-1">
+                  <span className="text-gray-700 font-medium">
+                    ${campaign.currentAmount.toNumber().toLocaleString()} raised
+                  </span>
+                  <span className="text-gray-600">
+                    of ${campaign.targetAmount.toNumber().toLocaleString()} goal
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 rounded-full h-2 transition-all duration-500 ease-out"
+                    style={{ width: `${fundingPercentage}%` }}
                   />
-                </Box>
+                </div>
+                <div className="mt-1 text-right text-sm text-gray-500">
+                  {fundingPercentage}% funded
+                </div>
+              </div>
 
-                <Flex justify="space-between">
-                  <Text fontSize="sm">
-                    {campaign.donorsCount.toNumber()} donors
-                  </Text>
-                  <Text fontSize="sm">
-                    {Math.round(fundingProgress)}% funded
-                  </Text>
-                </Flex>
-              </VStack>
-
-              <Flex gap={4} mb={6}>
-                <Button
-                  colorScheme="blue"
-                  size="lg"
-                  width="full"
-                  isDisabled={isDonationDisabled}
-                  onClick={onOpen}
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <button
+                  className={`px-4 py-2 rounded-lg text-white ${
+                    wallet.connected ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
+                  } flex-1`}
+                  disabled={!wallet.connected}
+                  onClick={openModal}
                 >
                   Donate with Crypto
-                </Button>
-                <Button
-                  colorScheme="green"
-                  size="lg"
-                  width="full"
-                  onClick={onCardPaymentOpen}
+                </button>
+                <button
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex-1"
+                  onClick={openCardPayment}
                 >
                   Donate with Card
-                </Button>
-              </Flex>
-
+                </button>
+              </div>
+              
               {!wallet.connected && (
-                <Alert status="info" borderRadius="md" mb={4}>
-                  <AlertIcon />
+                <div className="bg-blue-50 text-blue-700 p-3 rounded-md text-sm mb-4">
                   Connect your wallet to donate with cryptocurrency
-                </Alert>
+                </div>
               )}
               
               {campaign.fundsReleased && (
-                <Alert status="info" borderRadius="md" mb={4}>
-                  <AlertIcon />
+                <div className="bg-blue-50 text-blue-700 p-3 rounded-md text-sm">
                   Funds have been released to the campaign creator
-                </Alert>
+                </div>
               )}
-            </Box>
-          </Flex>
+            </div>
+          </div>
+          
+          {/* Campaign Body */}
+          <div className="p-6 border-t">
+            <h2 className="text-2xl font-bold mb-4">About this campaign</h2>
+            <p className="whitespace-pre-line">{campaign.description}</p>
+          </div>
+        </div>
+      </div>
 
-          <Box p={6}>
-            <Heading as="h2" size="lg" mb={4}>
-              About this campaign
-            </Heading>
-            <Text whiteSpace="pre-wrap">{campaign.description}</Text>
-          </Box>
-        </Box>
-      </Box>
-      
-      {/* Donation Modal */}
-      <Modal isOpen={isOpen} onClose={onClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Donate to {campaign.name}</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <VStack spacing={4}>
-              <Text>How much would you like to donate?</Text>
-              <NumberInput
-                min={1}
-                max={1000}
-                value={donationAmount}
-                onChange={(valueString) => setDonationAmount(parseFloat(valueString))}
-              >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              colorScheme="blue"
-              onClick={handleDonate}
-              isLoading={isSubmitting}
-              loadingText="Processing"
-            >
-              Confirm Donation
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-      
+      {/* Crypto Donation Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium">Donate to {campaign.name}</h3>
+                <button onClick={closeModal} className="text-gray-400 hover:text-gray-500">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">Donation Amount (LAKKHI)</label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    min="1"
+                    value={donationAmount}
+                    onChange={(e) => setDonationAmount(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2 mt-4">
+                <button 
+                  onClick={closeModal}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDonate}
+                  disabled={isSubmitting || !wallet.connected}
+                  className={`px-4 py-2 rounded-lg text-white ${
+                    isSubmitting || !wallet.connected ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  {isSubmitting ? 'Processing...' : 'Donate'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Card Payment Modal */}
-      <CardPaymentModal
-        isOpen={isCardPaymentOpen}
-        onClose={onCardPaymentClose}
-        campaign={campaign}
-      />
+      {isCardPaymentOpen && (
+        <CardPaymentModal
+          isOpen={isCardPaymentOpen}
+          onClose={closeCardPayment}
+          campaign={campaign}
+        />
+      )}
     </Layout>
   );
 } 
