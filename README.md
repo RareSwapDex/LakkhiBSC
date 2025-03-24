@@ -1,1 +1,1 @@
-# Lakkhi BSC - Updated
+# Lakkhi BSC - Blockchain Integration
