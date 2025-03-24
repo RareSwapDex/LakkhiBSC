@@ -1,8 +1,0 @@
-import { Keypair, PublicKey, Connection } from '@solana/web3.js';
-import * as bip39 from 'bip39';
-import { derivePath } from 'ed25519-hd-key';
-import Cookies from 'js-cookie';
-import { encrypt, decrypt } from '@/utils/encryption';
-
-// Define a type for Connection instance
-type SolanaConnection = InstanceType<typeof Connection>;

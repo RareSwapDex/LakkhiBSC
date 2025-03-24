@@ -1,1 +1,37 @@
-node_modules/
+# Dependencies
+node_modules
+
+# Build directories
+build
+dist
+.next
+
+# Environment variables
+.env
+.env.local
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.idea
+.vscode
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+venv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media
+
+# Compiled output
+*.so
+*.egg
+*.egg-info/

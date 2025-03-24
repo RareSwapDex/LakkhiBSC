@@ -1,0 +1,87 @@
+/* Global styles */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1 0 auto;
+  padding: 2rem 0;
+}
+
+/* Navigation styles */
+.navbar {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Footer styles */
+footer {
+  background-color: #f8f9fa;
+  padding: 1.5rem 0;
+  margin-top: auto;
+}
+
+/* Project card styles */
+.project-card {
+  height: 100%;
+  transition: transform 0.2s;
+  border: none;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.project-card:hover {
+  transform: translateY(-5px);
+}
+
+/* Form styles */
+.form-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Button styles */
+.btn-primary {
+  background-color: #3F51B5;
+  border-color: #3F51B5;
+}
+
+.btn-primary:hover {
+  background-color: #303F9F;
+  border-color: #303F9F;
+}
+
+/* Progress bar */
+.progress {
+  height: 10px;
+  border-radius: 5px;
+}
+
+.progress-bar {
+  background-color: #3F51B5;
+}
+
+/* Home page hero */
+.hero-section {
+  padding: 4rem 0;
+  background-color: #f5f5f5;
+  margin-bottom: 2rem;
+}
+
+/* Donation page */
+.donation-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Admin dashboard */
+.admin-dashboard {
+  padding: 2rem;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+} 
