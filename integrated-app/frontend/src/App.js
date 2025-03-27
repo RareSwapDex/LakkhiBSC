@@ -27,9 +27,12 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/campaigns" element={<ProjectsPage />} />
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/campaigns/:id" element={<ProjectDetailPage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
+                <Route path="/create-campaign" element={<CreateCampaignPage />} />
                 <Route path="/faq" element={<FAQPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms-of-service" element={<TermsOfServicePage />} />
