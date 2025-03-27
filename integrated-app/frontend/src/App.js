@@ -8,8 +8,6 @@ import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CreateCampaignPage from './pages/admin/CreateCampaignPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -30,8 +28,6 @@ function App() {
                 <Route path="/" element={<HomePage />} />
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
                 <Route path="/faq" element={<FAQPage />} />
