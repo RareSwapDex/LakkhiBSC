@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Container, Form, Button, Card, Row, Col, Alert, Spinner } from 'react-bootstrap';
+import { Container, Form, Button, Card, Row, Col, Alert, Spinner, Tabs, Tab, ListGroup, InputGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ProviderContext } from '../../web3/ProviderContext';
@@ -35,6 +35,45 @@ const CreateCampaignPage = () => {
       projectFundCurrency: 'USD',
       walletAddress: '',
       tokenAddress: '',
+      category: '',
+      tags: [],
+      minContribution: '0.01',
+      maxContribution: '',
+      enableAutoRefund: true
+    },
+    story: {
+      projectStory: '',
+      projectGoals: '',
+      projectRisks: '',
+      projectTimeline: '',
+      projectBudget: ''
+    },
+    team: {
+      members: [
+        {
+          name: '',
+          role: '',
+          bio: '',
+          social: ''
+        }
+      ]
+    },
+    social: {
+      website: '',
+      twitter: '',
+      telegram: '',
+      discord: '',
+      github: '',
+      linkedin: ''
+    },
+    updates: {
+      scheduleCommitment: 'weekly', // weekly, biweekly, monthly
+    },
+    legal: {
+      termsAccepted: false,
+      privacyAccepted: false,
+      refundPolicy: '',
+      kycCompleted: false
     },
     milestones: [
       {
@@ -101,17 +140,113 @@ const CreateCampaignPage = () => {
     }));
   };
   
+  // Handle team member changes
+  const handleTeamMemberChange = (index, field, value) => {
+    const updatedMembers = [...formData.team.members];
+    updatedMembers[index] = {
+      ...updatedMembers[index],
+      [field]: value
+    };
+    
+    setFormData(prev => ({
+      ...prev,
+      team: {
+        ...prev.team,
+        members: updatedMembers
+      }
+    }));
+  };
+  
+  // Add team member
+  const addTeamMember = () => {
+    setFormData(prev => ({
+      ...prev,
+      team: {
+        ...prev.team,
+        members: [
+          ...prev.team.members,
+          {
+            name: '',
+            role: '',
+            bio: '',
+            social: ''
+          }
+        ]
+      }
+    }));
+  };
+  
+  // Remove team member
+  const removeTeamMember = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      team: {
+        ...prev.team,
+        members: prev.team.members.filter((_, i) => i !== index)
+      }
+    }));
+  };
+  
+  // Handle social link changes
+  const handleSocialChange = (platform, value) => {
+    setFormData(prev => ({
+      ...prev,
+      social: {
+        ...prev.social,
+        [platform]: value
+      }
+    }));
+  };
+  
+  // Handle tag input
+  const [tagInput, setTagInput] = useState('');
+  
+  const handleAddTag = () => {
+    if (tagInput.trim() && !formData.basics.tags.includes(tagInput.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        basics: {
+          ...prev.basics,
+          tags: [...prev.basics.tags, tagInput.trim()]
+        }
+      }));
+      setTagInput('');
+    }
+  };
+  
+  const handleRemoveTag = (tagToRemove) => {
+    setFormData(prev => ({
+      ...prev,
+      basics: {
+        ...prev.basics,
+        tags: prev.basics.tags.filter(tag => tag !== tagToRemove)
+      }
+    }));
+  };
+  
   // Validate form including milestones
   const validateForm = () => {
     // Validate basic info
     if (!formData.basics.projectTitle || !formData.basics.projectDescription || !formData.basics.projectFundAmount) {
-      setError('Please fill out all required fields');
+      setError('Please fill out all required fields in the Basics section');
       return false;
     }
     
     // Validate token
     if (!formData.basics.tokenAddress || !tokenInfo) {
       setError('Please provide and validate a token address');
+      return false;
+    }
+    
+    // Validate detailed story
+    if (!formData.story.projectStory || formData.story.projectStory.length < 100) {
+      setError('Please provide a more detailed project story (at least 100 characters)');
+      return false;
+    }
+    
+    // Validate legal terms
+    if (!formData.legal.termsAccepted || !formData.legal.privacyAccepted) {
+      setError('You must accept the terms of service and privacy policy');
       return false;
     }
     
@@ -283,7 +418,7 @@ const CreateCampaignPage = () => {
       return;
     }
     
-    // Validate form including milestones
+    // Validate complete form
     if (!validateForm()) {
       return;
     }
@@ -316,11 +451,33 @@ const CreateCampaignPage = () => {
       
       // Add basics
       Object.keys(formDataWithWallet.basics).forEach(key => {
-        formDataToSend.append(`basics.${key}`, formDataWithWallet.basics[key]);
+        if (key === 'tags') {
+          formDataToSend.append(`basics.${key}`, JSON.stringify(formDataWithWallet.basics[key]));
+        } else {
+          formDataToSend.append(`basics.${key}`, formDataWithWallet.basics[key]);
+        }
       });
       
-      // Add description to story field
-      formDataToSend.append('story.projectStory', formDataWithWallet.basics.projectDescription || '');
+      // Add story fields
+      Object.keys(formDataWithWallet.story).forEach(key => {
+        formDataToSend.append(`story.${key}`, formDataWithWallet.story[key]);
+      });
+      
+      // Add team info
+      formDataToSend.append('team.members', JSON.stringify(formDataWithWallet.team.members));
+      
+      // Add social links
+      Object.keys(formDataWithWallet.social).forEach(key => {
+        formDataToSend.append(`social.${key}`, formDataWithWallet.social[key]);
+      });
+      
+      // Add update schedule
+      formDataToSend.append('updates.scheduleCommitment', formDataWithWallet.updates.scheduleCommitment);
+      
+      // Add legal info
+      Object.keys(formDataWithWallet.legal).forEach(key => {
+        formDataToSend.append(`legal.${key}`, formDataWithWallet.legal[key]);
+      });
       
       // Add milestones
       formDataToSend.append('milestones', JSON.stringify(formDataWithWallet.milestones));
@@ -387,7 +544,7 @@ const CreateCampaignPage = () => {
       const Web3 = require('web3');
       const web3 = new Web3(window.ethereum);
       
-      // Campaign staking contract ABI
+      // Updated Campaign factory ABI with new parameters
       const factoryABI = [
         {
           "inputs": [
@@ -395,7 +552,16 @@ const CreateCampaignPage = () => {
             {"name": "tokenAddress", "type": "address"},
             {"name": "beneficiary", "type": "address"},
             {"name": "targetAmount", "type": "uint256"},
-            {"name": "durationInDays", "type": "uint256"}
+            {"name": "minContribution", "type": "uint256"},
+            {"name": "maxContribution", "type": "uint256"},
+            {"name": "durationInDays", "type": "uint256"},
+            {"name": "milestones", "type": "tuple[]", "components": [
+              {"name": "title", "type": "string"},
+              {"name": "description", "type": "string"},
+              {"name": "amount", "type": "uint256"},
+              {"name": "releaseTime", "type": "uint256"}
+            ]},
+            {"name": "enableAutoRefund", "type": "bool"}
           ],
           "name": "createCampaign",
           "outputs": [{"name": "campaignAddress", "type": "address"}],
@@ -416,12 +582,48 @@ const CreateCampaignPage = () => {
       // Convert fund amount to wei
       const fundAmountInWei = web3.utils.toWei(formData.basics.projectFundAmount.toString(), 'ether');
       
+      // Convert min contribution to wei (default to 0.01 ETH if not set)
+      const minContributionInWei = web3.utils.toWei(
+        formData.basics.minContribution || '0.01', 
+        'ether'
+      );
+      
+      // Convert max contribution to wei (or set to max uint256 if not specified)
+      const maxContributionInWei = formData.basics.maxContribution 
+        ? web3.utils.toWei(formData.basics.maxContribution, 'ether')
+        : '115792089237316195423570985008687907853269984665640564039457584007913129639935'; // max uint256
+      
+      // Format milestones for the contract
+      const formattedMilestones = formData.milestones.map(milestone => {
+        // Calculate timestamp for due date or use campaign end date if not specified
+        let releaseTime;
+        if (milestone.dueDate) {
+          releaseTime = Math.floor(new Date(milestone.dueDate).getTime() / 1000);
+        } else {
+          // If no specific due date, use campaign end date (now + duration)
+          const campaignEndDate = new Date();
+          campaignEndDate.setDate(campaignEndDate.getDate() + durationInDays);
+          releaseTime = Math.floor(campaignEndDate.getTime() / 1000);
+        }
+        
+        return {
+          title: milestone.title,
+          description: milestone.description,
+          amount: web3.utils.toWei(milestone.targetAmount.toString(), 'ether'),
+          releaseTime: releaseTime
+        };
+      });
+      
       console.log('Deploying contract with params:', {
         name: formData.basics.projectTitle,
         tokenAddress: formData.basics.tokenAddress,
-        beneficiary: account, // Use connected wallet
+        beneficiary: account,
         targetAmount: fundAmountInWei,
-        durationInDays: durationInDays
+        minContribution: minContributionInWei,
+        maxContribution: maxContributionInWei,
+        durationInDays: durationInDays,
+        milestones: formattedMilestones,
+        enableAutoRefund: formData.basics.enableAutoRefund
       });
       
       // THIS IS THE DIRECT METAMASK REQUEST - Triggers MetaMask popup
@@ -435,7 +637,11 @@ const CreateCampaignPage = () => {
             formData.basics.tokenAddress,
             account, // Use connected wallet
             fundAmountInWei,
-            durationInDays
+            minContributionInWei,
+            maxContributionInWei,
+            durationInDays,
+            formattedMilestones,
+            formData.basics.enableAutoRefund
           ).encodeABI()
         }]
       });
@@ -498,6 +704,19 @@ const CreateCampaignPage = () => {
     return null;
   };
   
+  // Campaign categories
+  const campaignCategories = [
+    { id: '', name: 'Select a category' },
+    { id: 'defi', name: 'DeFi' },
+    { id: 'nft', name: 'NFT' },
+    { id: 'gaming', name: 'Gaming' },
+    { id: 'metaverse', name: 'Metaverse' },
+    { id: 'dao', name: 'DAO' },
+    { id: 'infrastructure', name: 'Infrastructure' },
+    { id: 'social', name: 'Social' },
+    { id: 'other', name: 'Other' }
+  ];
+  
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
   }
@@ -537,314 +756,903 @@ const CreateCampaignPage = () => {
       
       {error && <Alert variant="danger">{error}</Alert>}
       
-      <Form onSubmit={handleSubmit}>
-        <Card className="mb-3">
-          <Card.Body>
-            <Form.Group className="mb-3">
-              <Form.Label>Campaign Title*</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.basics.projectTitle}
-                onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
-                required
-                placeholder="Enter a clear, descriptive title"
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Wallet Address (Connected)</Form.Label>
-              <Form.Control
-                type="text"
-                value={connectedWallet}
-                disabled
-                readOnly
-                className="bg-light"
-              />
-              <Form.Text className="text-muted">
-                <strong>Important:</strong> This wallet will be the owner of the campaign. Only this wallet address 
-                will be able to withdraw or manage funds. Make sure you have access to this wallet as ownership 
-                cannot be transferred later.
-              </Form.Text>
-            </Form.Group>
-            
-            <TokenSelector 
-              value={formData.basics.tokenAddress}
-              onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
-              onValidate={(tokenInfo) => setTokenInfo(tokenInfo)}
-              onReset={() => setTokenInfo(null)}
-            />
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Blockchain Chain*</Form.Label>
-              <Form.Select 
-                value={formData.basics.blockchainChain}
-                onChange={(e) => handleInputChange('basics', 'blockchainChain', e.target.value)}
-                required
-              >
-                {blockchainChains.map(chain => (
-                  <option key={chain.id} value={chain.id}>
-                    {chain.name}
-                  </option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Brief Description*</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={formData.basics.projectDescription}
-                onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
-                required
-                placeholder="Briefly describe your project (max 300 characters)"
-                maxLength={300}
-              />
-            </Form.Group>
-            
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Funding Goal*</Form.Label>
+      <Tabs defaultActiveKey="basics" id="campaign-form-tabs" className="mb-3">
+        <Tab eventKey="basics" title="Basics">
+          <Card className="mb-3">
+            <Card.Body>
+              <Form.Group className="mb-3">
+                <Form.Label>Campaign Title*</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={formData.basics.projectTitle}
+                  onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
+                  required
+                  placeholder="Enter a clear, descriptive title"
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Category*</Form.Label>
+                <Form.Select
+                  value={formData.basics.category}
+                  onChange={(e) => handleInputChange('basics', 'category', e.target.value)}
+                  required
+                >
+                  {campaignCategories.map(category => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Tags</Form.Label>
+                <InputGroup>
                   <Form.Control
-                    type="number"
-                    value={formData.basics.projectFundAmount}
-                    onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
-                    required
-                    min="1"
-                    step="0.01"
-                    placeholder="Enter amount"
+                    type="text"
+                    placeholder="Enter a tag and press Add"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTag();
+                      }
+                    }}
                   />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Currency*</Form.Label>
-                  <Form.Select
-                    value={formData.basics.projectFundCurrency}
-                    onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
-                    required
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-            </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Campaign Image (Optional)</Form.Label>
-              <Form.Control
-                type="file"
-                onChange={handleFileChange}
-              />
-              <Form.Text className="text-muted">
-                Upload an image to represent your campaign. If not provided, a default image will be used.
-              </Form.Text>
-            </Form.Group>
-            
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Launch Date</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={formData.basics.projectLaunchDate}
-                    onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Campaign Duration (days)*</Form.Label>
-                  <Form.Control
-                    type="number"
-                    value={formData.basics.projectDeadlineDate}
-                    onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
-                    required
-                    min="1"
-                    max="365"
-                    placeholder="Enter number of days"
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Check 
-                type="checkbox"
-                id="activate-immediately"
-                label="Activate campaign immediately after creation"
-                checked={formData.basics.activateImmediately}
-                onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
-              />
-            </Form.Group>
-          </Card.Body>
-        </Card>
-        
-        {/* Milestones Section */}
-        <Card className="mb-3">
-          <Card.Header>
-            <h3 className="mb-0">Campaign Milestones</h3>
-            <small className="text-muted">Define how funds will be released as the campaign progresses</small>
-          </Card.Header>
-          <Card.Body>
-            <p className="text-info mb-3">
-              <strong>Note:</strong> The total target amount of all milestones must equal your campaign's funding goal.
-              Currently: {formData.milestones.reduce((sum, m) => sum + parseFloat(m.targetAmount || 0), 0)} / {formData.basics.projectFundAmount || 0}
-            </p>
-            
-            {formData.milestones.map((milestone, index) => (
-              <Card key={index} className="mb-3 border-light">
-                <Card.Header className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">Milestone #{index + 1}</h5>
-                  <Button 
-                    variant="outline-danger" 
-                    size="sm"
-                    onClick={() => removeMilestone(index)}
-                    disabled={formData.milestones.length <= 1}
-                  >
-                    Remove
+                  <Button variant="outline-secondary" onClick={handleAddTag}>
+                    Add
                   </Button>
-                </Card.Header>
-                <Card.Body>
-                  <Row>
-                    <Col md={6}>
-                      <Form.Group className="mb-3">
-                        <Form.Label>Title*</Form.Label>
-                        <Form.Control
-                          type="text"
-                          value={milestone.title}
-                          onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
-                          required
-                          placeholder="e.g., Initial Development, Beta Release"
-                        />
-                      </Form.Group>
-                    </Col>
-                    <Col md={6}>
-                      <Form.Group className="mb-3">
-                        <Form.Label>Target Amount*</Form.Label>
-                        <Form.Control
-                          type="number"
-                          value={milestone.targetAmount}
-                          onChange={(e) => handleMilestoneChange(index, 'targetAmount', e.target.value)}
-                          required
-                          min="0"
-                          step="0.01"
-                          placeholder="Amount for this milestone"
-                        />
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                  
-                  <Row>
-                    <Col md={12}>
-                      <Form.Group className="mb-3">
-                        <Form.Label>Due Date</Form.Label>
-                        <Form.Control
-                          type="date"
-                          value={milestone.dueDate}
-                          onChange={(e) => handleMilestoneChange(index, 'dueDate', e.target.value)}
-                          placeholder="Expected completion date"
-                        />
-                      </Form.Group>
-                    </Col>
-                  </Row>
-                  
+                </InputGroup>
+                <div className="mt-2">
+                  {formData.basics.tags.map((tag, index) => (
+                    <span key={index} className="badge bg-primary me-2 mb-2 p-2">
+                      {tag}
+                      <button 
+                        type="button" 
+                        className="btn-close btn-close-white ms-2" 
+                        style={{ fontSize: '0.5rem' }}
+                        onClick={() => handleRemoveTag(tag)}
+                        aria-label="Remove tag"
+                      ></button>
+                    </span>
+                  ))}
+                </div>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Wallet Address (Connected)</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={connectedWallet}
+                  disabled
+                  readOnly
+                  className="bg-light"
+                />
+                <Form.Text className="text-muted">
+                  <strong>Important:</strong> This wallet will be the owner of the campaign. Only this wallet address 
+                  will be able to withdraw or manage funds. Make sure you have access to this wallet as ownership 
+                  cannot be transferred later.
+                </Form.Text>
+              </Form.Group>
+              
+              <TokenSelector 
+                value={formData.basics.tokenAddress}
+                onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
+                onValidate={(tokenInfo) => setTokenInfo(tokenInfo)}
+                onReset={() => setTokenInfo(null)}
+              />
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Blockchain Chain*</Form.Label>
+                <Form.Select 
+                  value={formData.basics.blockchainChain}
+                  onChange={(e) => handleInputChange('basics', 'blockchainChain', e.target.value)}
+                  required
+                >
+                  {blockchainChains.map(chain => (
+                    <option key={chain.id} value={chain.id}>
+                      {chain.name}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+
+              <Form.Group className="mb-3">
+                <Form.Label>Brief Description*</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  value={formData.basics.projectDescription}
+                  onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
+                  required
+                  placeholder="Briefly describe your project (max 300 characters)"
+                  maxLength={300}
+                />
+              </Form.Group>
+              
+              <Row>
+                <Col md={6}>
                   <Form.Group className="mb-3">
-                    <Form.Label>Description*</Form.Label>
+                    <Form.Label>Funding Goal*</Form.Label>
                     <Form.Control
-                      as="textarea"
-                      rows={2}
-                      value={milestone.description}
-                      onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
+                      type="number"
+                      value={formData.basics.projectFundAmount}
+                      onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
                       required
-                      placeholder="Describe what will be accomplished in this milestone"
+                      min="1"
+                      step="0.01"
+                      placeholder="Enter amount"
                     />
                   </Form.Group>
-                </Card.Body>
-              </Card>
-            ))}
-            
-            <div className="d-grid gap-2">
-              <Button 
-                variant="outline-primary" 
-                onClick={addMilestone}
-                className="mt-2"
-              >
-                Add Another Milestone
-              </Button>
-            </div>
-          </Card.Body>
-        </Card>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Currency*</Form.Label>
+                    <Form.Select
+                      value={formData.basics.projectFundCurrency}
+                      onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
+                      required
+                    >
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+              </Row>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Campaign Image (Optional)</Form.Label>
+                <Form.Control
+                  type="file"
+                  onChange={handleFileChange}
+                />
+                <Form.Text className="text-muted">
+                  Upload an image to represent your campaign. If not provided, a default image will be used.
+                </Form.Text>
+              </Form.Group>
+              
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Launch Date</Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={formData.basics.projectLaunchDate}
+                      onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Campaign Duration (days)*</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={formData.basics.projectDeadlineDate}
+                      onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
+                      required
+                      min="1"
+                      max="365"
+                      placeholder="Enter number of days"
+                    />
+                  </Form.Group>
+                </Col>
+              </Row>
+              
+              <Form.Group className="mb-3">
+                <Form.Check 
+                  type="checkbox"
+                  id="activate-immediately"
+                  label="Activate campaign immediately after creation"
+                  checked={formData.basics.activateImmediately}
+                  onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
+                />
+              </Form.Group>
+
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Minimum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={formData.basics.minContribution}
+                      onChange={(e) => handleInputChange('basics', 'minContribution', e.target.value)}
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Enter minimum contribution amount"
+                    />
+                    <Form.Text className="text-muted">
+                      The smallest amount a supporter can contribute (default: 0.01)
+                    </Form.Text>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Maximum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={formData.basics.maxContribution}
+                      onChange={(e) => handleInputChange('basics', 'maxContribution', e.target.value)}
+                      min="0"
+                      step="0.01"
+                      placeholder="Leave empty for no limit"
+                    />
+                    <Form.Text className="text-muted">
+                      The largest amount a supporter can contribute (leave empty for no limit)
+                    </Form.Text>
+                  </Form.Group>
+                </Col>
+              </Row>
+
+              <Form.Group className="mb-3">
+                <Form.Check 
+                  type="checkbox"
+                  id="enable-auto-refund"
+                  label="Enable automatic refunds if campaign fails to reach target"
+                  checked={formData.basics.enableAutoRefund}
+                  onChange={(e) => handleInputChange('basics', 'enableAutoRefund', e.target.checked)}
+                />
+                <Form.Text className="text-muted">
+                  When enabled, contributors will automatically receive refunds if the campaign doesn't meet its target
+                </Form.Text>
+              </Form.Group>
+            </Card.Body>
+          </Card>
+        </Tab>
         
-        <Form.Group className="mb-3">
-          <Form.Check 
-            type="checkbox"
-            id="include-incentives"
-            label="Include supporter incentives (rewards)"
-            checked={includeIncentives}
-            onChange={(e) => setIncludeIncentives(e.target.checked)}
-          />
-        </Form.Group>
+        <Tab eventKey="story" title="Detailed Story">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-muted mb-3">
+                A detailed project story helps potential supporters understand your vision and increases your chances of success.
+              </p>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Project Story*</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={6}
+                  value={formData.story.projectStory}
+                  onChange={(e) => handleInputChange('story', 'projectStory', e.target.value)}
+                  required
+                  placeholder="Describe your project in detail. What are you creating and why is it important?"
+                />
+                <Form.Text className="text-muted">
+                  {formData.story.projectStory.length} characters (min 100 recommended)
+                </Form.Text>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Project Goals</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={formData.story.projectGoals}
+                  onChange={(e) => handleInputChange('story', 'projectGoals', e.target.value)}
+                  placeholder="What specific goals are you trying to achieve with this funding?"
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Project Timeline</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={formData.story.projectTimeline}
+                  onChange={(e) => handleInputChange('story', 'projectTimeline', e.target.value)}
+                  placeholder="Outline the major phases and timeline of your project"
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Budget Breakdown</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={formData.story.projectBudget}
+                  onChange={(e) => handleInputChange('story', 'projectBudget', e.target.value)}
+                  placeholder="How will you use the funds? Provide a breakdown of your budget."
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Risks and Challenges</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={formData.story.projectRisks}
+                  onChange={(e) => handleInputChange('story', 'projectRisks', e.target.value)}
+                  placeholder="What risks or challenges might you face, and how will you address them?"
+                />
+              </Form.Group>
+            </Card.Body>
+          </Card>
+        </Tab>
         
-        {includeIncentives && (
+        <Tab eventKey="team" title="Team">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-muted mb-3">
+                Introduce your team to build trust with potential supporters.
+              </p>
+              
+              {formData.team.members.map((member, index) => (
+                <Card key={index} className="mb-3 border-light">
+                  <Card.Header className="d-flex justify-content-between align-items-center">
+                    <h5 className="mb-0">Team Member #{index + 1}</h5>
+                    {formData.team.members.length > 1 && (
+                      <Button 
+                        variant="outline-danger" 
+                        size="sm"
+                        onClick={() => removeTeamMember(index)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </Card.Header>
+                  <Card.Body>
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Name</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={member.name}
+                            onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
+                            placeholder="Full name"
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Role</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={member.role}
+                            onChange={(e) => handleTeamMemberChange(index, 'role', e.target.value)}
+                            placeholder="e.g., Project Lead, Developer, Designer"
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Bio</Form.Label>
+                      <Form.Control
+                        as="textarea"
+                        rows={2}
+                        value={member.bio}
+                        onChange={(e) => handleTeamMemberChange(index, 'bio', e.target.value)}
+                        placeholder="Brief biography highlighting relevant experience"
+                      />
+                    </Form.Group>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Social Link</Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={member.social}
+                        onChange={(e) => handleTeamMemberChange(index, 'social', e.target.value)}
+                        placeholder="LinkedIn, Twitter, or GitHub profile link"
+                      />
+                    </Form.Group>
+                  </Card.Body>
+                </Card>
+              ))}
+              
+              <div className="d-grid gap-2">
+                <Button 
+                  variant="outline-primary" 
+                  onClick={addTeamMember}
+                  className="mt-2"
+                >
+                  Add Team Member
+                </Button>
+              </div>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        <Tab eventKey="social" title="Social & Links">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-muted mb-3">
+                Connect your social platforms to build credibility and keep supporters updated.
+              </p>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Website</Form.Label>
+                <Form.Control
+                  type="url"
+                  value={formData.social.website}
+                  onChange={(e) => handleSocialChange('website', e.target.value)}
+                  placeholder="https://yourdomain.com"
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Twitter</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>twitter.com/</InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={formData.social.twitter}
+                    onChange={(e) => handleSocialChange('twitter', e.target.value)}
+                    placeholder="username"
+                  />
+                </InputGroup>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Telegram</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>t.me/</InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={formData.social.telegram}
+                    onChange={(e) => handleSocialChange('telegram', e.target.value)}
+                    placeholder="username or group"
+                  />
+                </InputGroup>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Discord</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>discord.gg/</InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={formData.social.discord}
+                    onChange={(e) => handleSocialChange('discord', e.target.value)}
+                    placeholder="invite code"
+                  />
+                </InputGroup>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>GitHub</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>github.com/</InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={formData.social.github}
+                    onChange={(e) => handleSocialChange('github', e.target.value)}
+                    placeholder="username or organization"
+                  />
+                </InputGroup>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>LinkedIn</Form.Label>
+                <InputGroup>
+                  <InputGroup.Text>linkedin.com/in/</InputGroup.Text>
+                  <Form.Control
+                    type="text"
+                    value={formData.social.linkedin}
+                    onChange={(e) => handleSocialChange('linkedin', e.target.value)}
+                    placeholder="username"
+                  />
+                </InputGroup>
+              </Form.Group>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        <Tab eventKey="milestones" title="Milestones">
+          <Card className="mb-3">
+            <Card.Header>
+              <h3 className="mb-0">Campaign Milestones</h3>
+              <small className="text-muted">Define how funds will be released as the campaign progresses</small>
+            </Card.Header>
+            <Card.Body>
+              <Alert variant="info" className="mb-3">
+                <Alert.Heading>Smart Contract Integration</Alert.Heading>
+                <p>
+                  These milestones are directly integrated into your campaign's smart contract. Each milestone:
+                  <ul className="mb-0">
+                    <li>Locks a portion of funds until the specified date</li>
+                    <li>Requires meeting milestone criteria before funds can be released</li>
+                    <li>Creates transparency and accountability for your backers</li>
+                  </ul>
+                </p>
+              </Alert>
+              
+              <p className="text-info mb-3">
+                <strong>Note:</strong> The total target amount of all milestones must equal your campaign's funding goal.
+                Currently: {formData.milestones.reduce((sum, m) => sum + parseFloat(m.targetAmount || 0), 0)} / {formData.basics.projectFundAmount || 0}
+              </p>
+              
+              {formData.milestones.map((milestone, index) => (
+                <Card key={index} className="mb-3 border-light">
+                  <Card.Header className="d-flex justify-content-between align-items-center">
+                    <h5 className="mb-0">Milestone #{index + 1}</h5>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={() => removeMilestone(index)}
+                      disabled={formData.milestones.length <= 1}
+                    >
+                      Remove
+                    </Button>
+                  </Card.Header>
+                  <Card.Body>
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Title*</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={milestone.title}
+                            onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
+                            required
+                            placeholder="e.g., Initial Development, Beta Release"
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Target Amount*</Form.Label>
+                          <Form.Control
+                            type="number"
+                            value={milestone.targetAmount}
+                            onChange={(e) => handleMilestoneChange(index, 'targetAmount', e.target.value)}
+                            required
+                            min="0"
+                            step="0.01"
+                            placeholder="Amount for this milestone"
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                    
+                    <Row>
+                      <Col md={12}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Due Date</Form.Label>
+                          <Form.Control
+                            type="date"
+                            value={milestone.dueDate}
+                            onChange={(e) => handleMilestoneChange(index, 'dueDate', e.target.value)}
+                            placeholder="Expected completion date"
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                    
+                    <Form.Group className="mb-3">
+                      <Form.Label>Description*</Form.Label>
+                      <Form.Control
+                        as="textarea"
+                        rows={2}
+                        value={milestone.description}
+                        onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
+                        required
+                        placeholder="Describe what will be accomplished in this milestone"
+                      />
+                    </Form.Group>
+                  </Card.Body>
+                </Card>
+              ))}
+              
+              <div className="d-grid gap-2">
+                <Button 
+                  variant="outline-primary" 
+                  onClick={addMilestone}
+                  className="mt-2"
+                >
+                  Add Another Milestone
+                </Button>
+              </div>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        <Tab eventKey="updates" title="Updates Schedule">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-muted mb-3">
+                Setting clear expectations for updates helps build trust with your supporters.
+              </p>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Update Frequency Commitment</Form.Label>
+                <Form.Select
+                  value={formData.updates.scheduleCommitment}
+                  onChange={(e) => handleInputChange('updates', 'scheduleCommitment', e.target.value)}
+                >
+                  <option value="weekly">Weekly Updates</option>
+                  <option value="biweekly">Bi-Weekly Updates</option>
+                  <option value="monthly">Monthly Updates</option>
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  How often do you commit to updating your backers on project progress?
+                </Form.Text>
+              </Form.Group>
+              
+              <Alert variant="info">
+                <Alert.Heading>Why Updates Matter</Alert.Heading>
+                <p>
+                  Regular updates are crucial for maintaining backer confidence. They show your project is active
+                  and making progress. Campaigns with consistent updates are more likely to succeed and maintain
+                  community support.
+                </p>
+              </Alert>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        <Tab eventKey="rewards" title="Rewards">
           <Card className="mb-3">
             <Card.Header>
               <h3 className="mb-0">Rewards</h3>
             </Card.Header>
             <Card.Body>
-              {formData.rewards.projectRewards.map((reward, index) => (
-                <Row key={index} className="mb-3">
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Reward Title</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={reward.title}
-                        onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
-                        placeholder="e.g., Early Access"
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Price</Form.Label>
-                      <Form.Control
-                        type="number"
-                        value={reward.price}
-                        onChange={(e) => handleRewardChange(index, 'price', e.target.value)}
-                        min="0"
-                        step="0.01"
-                        placeholder="Minimum contribution to receive this reward"
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={12}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Description</Form.Label>
-                      <Form.Control
-                        as="textarea"
-                        rows={2}
-                        value={reward.description}
-                        onChange={(e) => handleRewardChange(index, 'description', e.target.value)}
-                        placeholder="Describe what supporters will receive"
-                      />
-                    </Form.Group>
-                  </Col>
-                </Row>
-              ))}
+              <Form.Group className="mb-3">
+                <Form.Check 
+                  type="checkbox"
+                  id="include-incentives"
+                  label="Include supporter incentives (rewards)"
+                  checked={includeIncentives}
+                  onChange={(e) => setIncludeIncentives(e.target.checked)}
+                />
+              </Form.Group>
+              
+              {includeIncentives && (
+                <>
+                  <p className="text-muted mb-3">
+                    Rewards incentivize supporters to back your project. Define what backers will receive at different contribution levels.
+                  </p>
+                  
+                  {formData.rewards.projectRewards.map((reward, index) => (
+                    <Card key={index} className="mb-3 border-light">
+                      <Card.Header>Reward Tier #{index + 1}</Card.Header>
+                      <Card.Body>
+                        <Row>
+                          <Col md={6}>
+                            <Form.Group className="mb-3">
+                              <Form.Label>Reward Title</Form.Label>
+                              <Form.Control
+                                type="text"
+                                value={reward.title}
+                                onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
+                                placeholder="e.g., Early Access, Premium Supporter"
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={6}>
+                            <Form.Group className="mb-3">
+                              <Form.Label>Price</Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={reward.price}
+                                onChange={(e) => handleRewardChange(index, 'price', e.target.value)}
+                                min="0"
+                                step="0.01"
+                                placeholder="Minimum contribution to receive this reward"
+                              />
+                            </Form.Group>
+                          </Col>
+                        </Row>
+                        
+                        <Row>
+                          <Col md={6}>
+                            <Form.Group className="mb-3">
+                              <Form.Label>Available Items</Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={reward.availableItems}
+                                onChange={(e) => handleRewardChange(index, 'availableItems', e.target.value)}
+                                min="0"
+                                placeholder="Number available (leave blank for unlimited)"
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={6}>
+                            <Form.Group className="mb-3">
+                              <Form.Label>Estimated Delivery</Form.Label>
+                              <Form.Control
+                                type="date"
+                                value={reward.estimatedDelivery}
+                                onChange={(e) => handleRewardChange(index, 'estimatedDelivery', e.target.value)}
+                                placeholder="When will backers receive this reward?"
+                              />
+                            </Form.Group>
+                          </Col>
+                        </Row>
+                        
+                        <Form.Group className="mb-3">
+                          <Form.Label>Description</Form.Label>
+                          <Form.Control
+                            as="textarea"
+                            rows={2}
+                            value={reward.description}
+                            onChange={(e) => handleRewardChange(index, 'description', e.target.value)}
+                            placeholder="Describe what supporters will receive"
+                          />
+                        </Form.Group>
+                      </Card.Body>
+                    </Card>
+                  ))}
+                  
+                  <Button 
+                    variant="outline-primary"
+                    onClick={() => {
+                      const updatedRewards = [...formData.rewards.projectRewards];
+                      updatedRewards.push({
+                        title: '',
+                        description: '',
+                        price: '',
+                        availableItems: '',
+                        estimatedDelivery: '',
+                        displayOrder: formData.rewards.projectRewards.length + 1,
+                      });
+                      
+                      setFormData(prev => ({
+                        ...prev,
+                        rewards: {
+                          ...prev.rewards,
+                          projectRewards: updatedRewards
+                        }
+                      }));
+                    }}
+                  >
+                    Add Another Reward Tier
+                  </Button>
+                </>
+              )}
             </Card.Body>
           </Card>
-        )}
+        </Tab>
         
-        <div className="d-grid gap-2">
-          <Button variant="primary" type="submit" size="lg">
-            Create Campaign
-          </Button>
-        </div>
-      </Form>
+        <Tab eventKey="legal" title="Legal">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-muted mb-3">
+                These legal agreements protect both you and your supporters.
+              </p>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Refund Policy</Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={4}
+                  value={formData.legal.refundPolicy}
+                  onChange={(e) => handleInputChange('legal', 'refundPolicy', e.target.value)}
+                  placeholder="Describe your refund policy for backers"
+                />
+                <Form.Text className="text-muted">
+                  If you don't specify a custom policy, our standard platform refund policy will apply.
+                </Form.Text>
+              </Form.Group>
+              
+              <Form.Group className="mb-4">
+                <Form.Check 
+                  type="checkbox"
+                  id="terms-accepted"
+                  label={
+                    <>
+                      I accept the <a href="/terms" target="_blank">Terms of Service</a>
+                    </>
+                  }
+                  checked={formData.legal.termsAccepted}
+                  onChange={(e) => handleInputChange('legal', 'termsAccepted', e.target.checked)}
+                  required
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-4">
+                <Form.Check 
+                  type="checkbox"
+                  id="privacy-accepted"
+                  label={
+                    <>
+                      I accept the <a href="/privacy" target="_blank">Privacy Policy</a>
+                    </>
+                  }
+                  checked={formData.legal.privacyAccepted}
+                  onChange={(e) => handleInputChange('legal', 'privacyAccepted', e.target.checked)}
+                  required
+                />
+              </Form.Group>
+              
+              <Alert variant="warning">
+                <Alert.Heading>Legal Responsibilities</Alert.Heading>
+                <p>
+                  As a campaign creator, you are legally obligated to fulfill your campaign promises and rewards.
+                  Failure to do so may result in legal action from backers or regulatory authorities.
+                </p>
+              </Alert>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        <Tab eventKey="preview" title="Preview">
+          <Card className="mb-3">
+            <Card.Body>
+              <p className="text-info mb-3">
+                Review your campaign information before final submission.
+              </p>
+              
+              <h3>{formData.basics.projectTitle || 'Campaign Title'}</h3>
+              
+              <p><strong>Goal:</strong> {formData.basics.projectFundAmount || '0'} {formData.basics.projectFundCurrency}</p>
+              <p><strong>Duration:</strong> {formData.basics.projectDeadlineDate || '30'} days</p>
+              <p><strong>Category:</strong> {campaignCategories.find(c => c.id === formData.basics.category)?.name || 'Not selected'}</p>
+              
+              <hr />
+              
+              <h4>Brief Description</h4>
+              <p>{formData.basics.projectDescription || 'No description provided'}</p>
+              
+              <h4>Detailed Story</h4>
+              <p>{formData.story.projectStory || 'No detailed story provided'}</p>
+              
+              <hr />
+              
+              <h4>Team</h4>
+              {formData.team.members.length > 0 ? (
+                <ListGroup>
+                  {formData.team.members.map((member, index) => (
+                    <ListGroup.Item key={index}>
+                      <strong>{member.name || 'Unnamed'}</strong> - {member.role || 'No role specified'}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : (
+                <p>No team members added</p>
+              )}
+              
+              <hr />
+              
+              <h4>Milestones</h4>
+              {formData.milestones.length > 0 ? (
+                <ListGroup>
+                  {formData.milestones.map((milestone, index) => (
+                    <ListGroup.Item key={index}>
+                      <strong>{milestone.title || `Milestone #${index + 1}`}</strong> - 
+                      {milestone.targetAmount ? ` ${milestone.targetAmount} ${formData.basics.projectFundCurrency}` : ' No amount specified'}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : (
+                <p>No milestones added</p>
+              )}
+              
+              <hr />
+              
+              <h4>Rewards</h4>
+              {includeIncentives && formData.rewards.projectRewards.length > 0 ? (
+                <ListGroup>
+                  {formData.rewards.projectRewards.map((reward, index) => (
+                    <ListGroup.Item key={index}>
+                      <strong>{reward.title || `Reward #${index + 1}`}</strong> - 
+                      {reward.price ? ` ${reward.price} ${formData.basics.projectFundCurrency}` : ' No price specified'}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : (
+                <p>No rewards added</p>
+              )}
+              
+              <p><strong>Contribution Limits:</strong> 
+                {formData.basics.minContribution ? `Min: ${formData.basics.minContribution} ${formData.basics.projectFundCurrency}` : 'No minimum'} 
+                {formData.basics.maxContribution ? ` / Max: ${formData.basics.maxContribution} ${formData.basics.projectFundCurrency}` : ' / No maximum'}
+              </p>
+              <p><strong>Auto Refund:</strong> {formData.basics.enableAutoRefund ? 'Enabled' : 'Disabled'}</p>
+              
+              <div className="alert alert-warning mt-4">
+                This is just a preview. You can go back to any section to make changes before submission.
+              </div>
+            </Card.Body>
+          </Card>
+        </Tab>
+      </Tabs>
+      
+      <div className="d-grid gap-2 mt-4">
+        <Button variant="primary" onClick={handleSubmit} size="lg">
+          Create Campaign
+        </Button>
+      </div>
     </Container>
   );
 };
