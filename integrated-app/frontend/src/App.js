@@ -13,9 +13,9 @@ import RegisterPage from './pages/RegisterPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CreateCampaignPage from './pages/admin/CreateCampaignPage';
 import NotFoundPage from './pages/NotFoundPage';
-import FAQPage from './pages/FAQPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import TermsOfServicePage from './pages/TermsOfServicePage';
+import FAQPage from './pages/FAQ';
+import PrivacyPolicyPage from './pages/Privacy';
+import TermsOfServicePage from './pages/Terms';
 import WhitepaperPage from './pages/WhitepaperPage';
 
 function App() {

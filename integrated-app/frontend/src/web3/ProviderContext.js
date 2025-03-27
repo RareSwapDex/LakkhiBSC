@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
 import Web3 from 'web3';
 import detectEthereumProvider from '@metamask/detect-provider';
 
@@ -13,6 +13,9 @@ export const ProviderContext = createContext({
   disconnectWallet: () => {},
   donateToProject: async () => {},
 });
+
+// Hook to use the provider context
+export const useProvider = () => useContext(ProviderContext);
 
 // Campaign ABI for interacting with deployed contracts 
 const CAMPAIGN_ABI = [
