@@ -1,4 +1,5 @@
 # Lakkhi Fund: A Decentralized Fundraising Platform for Web3 Token Projects
+**Version 1.0.1**
 
 ## Abstract
 
