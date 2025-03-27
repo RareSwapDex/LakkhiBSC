@@ -5,7 +5,7 @@ import { ProviderContextProvider } from './web3/ProviderContext';
 import './App.css';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import HomePage from './pages/HomePage';
+import HomePage from './pages/HomePage/index';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import AdminDashboard from './pages/admin/AdminDashboard';

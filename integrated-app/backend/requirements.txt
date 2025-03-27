@@ -8,4 +8,9 @@ phonenumbers==8.13.23
 Pillow==10.1.0
 requests==2.31.0
 python-decouple==3.8
-boto3==1.28.57 
+boto3==1.28.57
+web3==6.0.0
+dj-database-url==2.1.0
+psycopg2-binary==2.9.6
+gunicorn==21.2.0
+whitenoise==6.5.0 
