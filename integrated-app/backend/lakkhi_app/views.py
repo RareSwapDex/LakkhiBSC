@@ -331,7 +331,7 @@ def start_background_thread():
 @api_view(["PUT"])
 @permission_classes([AllowAny])
 def publish_project(request, project_id):
-    """Publish a project"""
+    """Prepare a project for publishing by returning deployment instructions"""
     try:
         project = get_object_or_404(Project, id=project_id)
         
@@ -347,20 +347,86 @@ def publish_project(request, project_id):
                 {"success": False, "message": "Missing required fields"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
-        # Update project status
-        project.status = 'active'
-        project.save()
         
-        return Response({
-            "success": True,
-            "message": "Project published successfully"
-        })
-        except Exception as e:
-            return Response(
-                {"success": False, "message": str(e)},
+        # Get deployment instructions from web3_helper_functions
+        from .web3_helper_functions import deploy_staking_contract
+        deployment_info = deploy_staking_contract(
+            project.title,
+            project.fund_amount,
+            project.wallet_address,
+            project.token_address,
+            wallet_key=None  # No key means just get instructions
+        )
+        
+        if deployment_info.get('requires_wallet', False):
+            # Return deployment instructions to the frontend
+            return Response({
+                "success": True,
+                "requires_wallet": True,
+                "message": "Project requires wallet signature to deploy contract",
+                "deployment_data": deployment_info.get('deployment_data', {}),
+                "project_id": project_id
+            })
+        else:
+            # Fallback for any error case
+            return Response({
+                "success": False,
+                "message": deployment_info.get('message', 'Unknown error preparing deployment')
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ) 
+        )
+
+
+@api_view(['POST'])
+def publish_project_with_signature(request, project_id):
+    """Deploy a contract for a project using the creator's wallet signature"""
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        
+        # Get signed data from request
+        wallet_key = request.data.get('wallet_key')
+        if not wallet_key:
+            return Response({
+                "success": False,
+                "message": "Wallet key is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Deploy the contract with the creator's wallet key
+        from .web3_helper_functions import deploy_staking_contract
+        contract_result = deploy_staking_contract(
+            project.title,
+            project.fund_amount,
+            project.wallet_address,
+            project.token_address,
+            wallet_key=wallet_key
+        )
+        
+        if contract_result.get('success', False):
+            # Update project status and save contract address
+            project.status = 'active'
+            project.contract_address = contract_result.get('contract_address')
+            project.save()
+            
+            return Response({
+                "success": True,
+                "message": "Project published successfully",
+                "contract_address": contract_result.get('contract_address')
+            })
+        else:
+            return Response({
+                "success": False,
+                "message": contract_result.get('message', 'Contract deployment failed')
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @csrf_exempt

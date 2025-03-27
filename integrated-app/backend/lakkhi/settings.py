@@ -134,6 +134,10 @@ DEFAULT_FROM_EMAIL = 'no-reply@lakkhi.com'
 
 # Blockchain Settings
 BSC_RPC_URL = os.environ.get('BSC_RPC_URL', 'https://bsc-dataseed.binance.org/')
+
+# Admin account variables - DEPRECATED
+# These are no longer used as campaign creators now pay for their own gas fees
+# Kept for backward compatibility only
 ADMIN_PRIVATE_KEY = os.environ.get('ADMIN_PRIVATE_KEY', '')
 ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS', '')
 

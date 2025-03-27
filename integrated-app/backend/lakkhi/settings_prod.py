@@ -33,6 +33,10 @@ WALLET_SECRET = os.environ.get('WALLET_SECRET')
 
 # Blockchain Settings
 BSC_RPC_URL = os.environ.get('BSC_RPC_URL', 'https://bsc-dataseed.binance.org/')
+
+# Admin account variables - DEPRECATED 
+# These are no longer used as campaign creators now pay for their own gas fees
+# Kept for backward compatibility only
 ADMIN_PRIVATE_KEY = os.environ.get('ADMIN_PRIVATE_KEY')
 ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS')
 
@@ -40,7 +44,7 @@ ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS')
 LAKKHI_TOKEN = os.environ.get('LAKKHI_TOKEN')
 TOKEN_ADDRESS = LAKKHI_TOKEN
 
-# Custom environment settings
+# Mercuryo settings
 MERCURYO_WIDGET_ID = os.environ.get('MERCURYO_WIDGET_ID')
 MERCURYO_SECRET_KEY = os.environ.get('MERCURYO_SECRET_KEY')
 MERCURYO_CALLBACK_SIGN_KEY = os.environ.get('MERCURYO_CALLBACK_SIGN_KEY')

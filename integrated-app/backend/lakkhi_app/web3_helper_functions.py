@@ -8,7 +8,9 @@ import time
 BSC_RPC_URL = settings.BSC_RPC_URL
 w3 = Web3(Web3.HTTPProvider(BSC_RPC_URL))
 
-# Admin account for deploying contracts
+# Admin account variables - DEPRECATED
+# These are no longer used as campaign creators now pay for their own gas fees
+# Kept for backward compatibility only
 ADMIN_ADDRESS = settings.ADMIN_ADDRESS
 ADMIN_PRIVATE_KEY = settings.ADMIN_PRIVATE_KEY
 
@@ -178,7 +180,7 @@ def estimate_gas_costs(operation_type, token_address=None):
             'message': str(e)
         }
 
-def deploy_staking_contract(project_name, project_target, project_owner, token_address=None):
+def deploy_staking_contract(project_name, project_target, project_owner, token_address=None, wallet_key=None):
     """
     Create a new staking contract for a project using the factory contract
     
@@ -187,9 +189,10 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         project_target: Target amount to raise
         project_owner: Wallet address of the project owner
         token_address: Optional custom token address to use (defaults to settings.TOKEN_ADDRESS)
+        wallet_key: The private key of the wallet that will pay for deployment (should be the creator's wallet)
         
     Returns:
-        dict: Result containing success status and contract details
+        dict: Result containing success status and contract details or instructions
     """
     try:
         # Convert target to wei (assuming 18 decimals)
@@ -198,9 +201,10 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         # Sanitize the wallet address to ensure it's valid
         owner_address = project_owner
         if not project_owner or not project_owner.startswith('0x'):
-            # Use a default address if none provided
-            owner_address = ADMIN_ADDRESS
-            print(f"Warning: Invalid wallet address. Using admin address: {owner_address}")
+            return {
+                'success': False,
+                'message': 'Invalid wallet address. A valid wallet address is required.'
+            }
         else:
             print(f"Using wallet address as beneficiary: {owner_address}")
             
@@ -224,6 +228,32 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
             abi=STAKING_FACTORY_ABI
         )
         
+        # If no wallet key provided, return deployment instructions instead of deploying
+        if not wallet_key:
+            # Get the current gas price and estimate gas for optimization
+            current_gas_price = w3.eth.gas_price
+            optimized_gas_price = int(current_gas_price * 0.9)  # 90% of current gas price
+            
+            # Estimate gas cost
+            gas_estimate = estimate_gas_costs('deploy_contract', token_address)
+            
+            # Generate deployment instructions
+            return {
+                'success': True,
+                'requires_wallet': True,
+                'message': 'Deployment requires wallet signature',
+                'deployment_data': {
+                    'factory_address': STAKING_FACTORY_ADDRESS,
+                    'project_name': project_name,
+                    'token_address': token_address,
+                    'owner_address': owner_address,
+                    'target_wei': str(target_wei),
+                    'estimated_gas': gas_estimate.get('gas_amount', 3000000),
+                    'gas_price': optimized_gas_price,
+                    'estimated_cost_usd': gas_estimate.get('cost_usd', 'Unknown')
+                }
+            }
+        
         # Get the current gas price and estimate gas for optimization
         current_gas_price = w3.eth.gas_price
         
@@ -232,8 +262,8 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         # The tradeoff is that the transaction might take longer to be included in a block.
         optimized_gas_price = int(current_gas_price * 0.9)  # 90% of current gas price
         
-        # Get the nonce for the transaction
-        nonce = w3.eth.get_transaction_count(ADMIN_ADDRESS)
+        # Get the nonce for the transaction - using the project owner's address since they're paying
+        nonce = w3.eth.get_transaction_count(owner_address)
         
         # Estimate gas cost
         gas_estimate = estimate_gas_costs('deploy_contract', token_address)
@@ -246,14 +276,14 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
             owner_address,
             target_wei
         ).build_transaction({
-            'from': ADMIN_ADDRESS,
+            'from': owner_address,  # Project owner deploys the contract
             'gas': gas_estimate.get('gas_amount', 3000000),  # Use estimated gas
             'gasPrice': optimized_gas_price,  # Use optimized gas price for cost savings
             'nonce': nonce,
         })
         
-        # Sign the transaction with admin private key
-        signed_tx = w3.eth.account.sign_transaction(tx, ADMIN_PRIVATE_KEY)
+        # Sign the transaction with the provided wallet key
+        signed_tx = w3.eth.account.sign_transaction(tx, wallet_key)
         
         # Send the transaction
         tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
@@ -666,50 +696,3 @@ def get_token_info(token_address):
             'success': False,
             'message': f"Error getting token information: {str(e)}"
         } 
-
-def deploy_campaign_contract(token_address, campaign_owner, campaign_id):
-    """
-    Deploy a new campaign contract
-    
-    Args:
-        token_address: Address of the token to use
-        campaign_owner: Wallet address of the campaign owner
-        campaign_id: ID of the campaign in database
-        
-    Returns:
-        str: Address of the deployed contract
-    """
-    try:
-        # Get campaign contract bytecode and ABI
-        with open(os.path.join(settings.BASE_DIR, 'static/campaign_contract_bytecode.json')) as bytecode_file:
-            contract_bytecode = json.load(bytecode_file)['bytecode']
-        
-        with open(os.path.join(settings.BASE_DIR, 'static/campaign_contract_abi.json')) as abi_file:
-            contract_abi = json.load(abi_file)
-        
-        # Create contract instance
-        contract = w3.eth.contract(bytecode=contract_bytecode, abi=contract_abi)
-        
-        # Build transaction
-        construct_txn = contract.constructor(
-            token_address,
-            campaign_owner
-        ).build_transaction({
-            'from': Web3.to_checksum_address(campaign_owner),
-            'nonce': w3.eth.get_transaction_count(Web3.to_checksum_address(campaign_owner)),
-            'gas': 2000000,
-            'gasPrice': w3.eth.gas_price
-        })
-        
-        # Sign and send transaction
-        signed_txn = w3.eth.account.sign_transaction(construct_txn, settings.ADMIN_WALLET_PRIVATE_KEY)
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
-        
-        # Wait for transaction receipt
-        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        
-        return tx_receipt['contractAddress']
-        
-    except Exception as e:
-        print(f"Error deploying campaign contract: {e}")
-        raise 
