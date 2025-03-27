@@ -5,6 +5,10 @@ from django.contrib.auth.models import BaseUserManager, AbstractBaseUser
 from django.core.validators import FileExtensionValidator
 from django.db.models import JSONField
 import datetime as dt
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
+from django.utils.text import slugify
 
 
 class UserManager(BaseUserManager):
@@ -71,7 +75,10 @@ class LowerCaseCharField(models.CharField):
         return str(value).lower()
 
 
-class User(AbstractBaseUser):
+class User(AbstractUser):
+    """
+    Custom user model
+    """
     username = models.CharField(max_length=20, unique=True, null=False, blank=False)
     email = LowerCaseCharField(max_length=254, unique=True, null=False, blank=False)
     password = models.CharField(max_length=254, null=False, blank=False)
@@ -84,9 +91,7 @@ class User(AbstractBaseUser):
     )
     bio = models.TextField(max_length=10000, null=True, blank=True, default="")
     phone = PhoneNumberField(null=True, blank=True)
-    wallet_address = models.CharField(
-        max_length=254, null=True, blank=True, default="None"
-    )
+    wallet_address = models.CharField(max_length=255, blank=True, null=True)
     creation_datetime = models.DateTimeField(auto_now_add=True)
     total_contributions = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
@@ -122,19 +127,17 @@ def get_category_files_directory(instance, filename):
 
 
 class Category(models.Model):
-    name = models.CharField(max_length=254, null=False, blank=False, unique=True)
-    arabic_name = models.CharField(max_length=254, null=True, blank=True, unique=True)
-    subheader = models.CharField(max_length=254, null=True, blank=True)
-    arabic_subheader = models.CharField(max_length=254, null=True, blank=True)
-    image = models.ImageField(
-        blank=False,
-        null=False,
-        default="help.jpg",
-        upload_to=get_category_files_directory,
-    )
+    """
+    Project category model
+    """
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
 
     def __str__(self):
         return self.name
+    
+    class Meta:
+        verbose_name_plural = "Categories"
 
 
 class Subcategory(models.Model):
@@ -188,168 +191,276 @@ def get_project_files_directory(instance, filename):
 
 
 class Project(models.Model):
-    # Basics
-    owner_type = models.CharField(max_length=254, null=True, blank=True)
+    """
+    Project model for caching on-chain campaign data
+    """
+    # Basic info
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    wallet_address = models.CharField(max_length=254)  # Campaign owner wallet
+    token_address = models.CharField(max_length=254)  # Token contract address
+    blockchain_chain = models.CharField(max_length=50, default='BSC')
+    
+    # Contract info
+    contract_address = models.CharField(max_length=254, null=True, blank=True)
+    transaction_hash = models.CharField(max_length=254, null=True, blank=True)
+    block_number = models.BigIntegerField(null=True, blank=True)
+    
+    # Funding details
+    fund_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    raised_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    currency = models.CharField(max_length=10, default='USD')
+    
+    # Timestamps
+    creation_datetime = models.DateTimeField(auto_now_add=True)
+    deadline = models.DateTimeField(null=True, blank=True)
+    
+    # Status and metrics
+    status = models.CharField(max_length=20, default='draft')
+    number_of_donators = models.IntegerField(default=0)
+
+    @property
+    def slug(self):
+        return slugify(self.title)
+
+    @property
+    def fund_percentage(self):
+        if self.fund_amount == 0:
+            return 0
+        return (self.raised_amount / self.fund_amount) * 100
+        
+    @property
+    def contract_url(self):
+        """Generate a contract URL based on the blockchain chain and contract address"""
+        if not self.contract_address:
+            return None
+            
+        if self.blockchain_chain == 'BSC':
+            return f"https://bscscan.com/address/{self.contract_address}"
+        elif self.blockchain_chain == 'Ethereum':
+            return f"https://etherscan.io/address/{self.contract_address}"
+        elif self.blockchain_chain == 'Solana':
+            return f"https://explorer.solana.com/address/{self.contract_address}"
+        elif self.blockchain_chain == 'Base':
+            return f"https://basescan.org/address/{self.contract_address}"
+        return None
+
+    def __str__(self):
+        return self.title
+
+
+class TokenPrice(models.Model):
+    """
+    Cache for token prices
+    """
+    price = models.FloatField(null=True)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"${self.price} ({self.last_updated})"
+
+
+class ProjectFile(models.Model):
+    owner = models.ForeignKey(Project, null=True, blank=False, on_delete=models.CASCADE)
+    file = models.FileField(
+        blank=False,
+        null=True,
+        upload_to=get_project_files_directory,
+    )
+    file_type = models.CharField(max_length=254, null=True, blank=True)
+    file_name = models.CharField(max_length=254, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.owner.title} - {self.file_name}" if self.owner else str(self.id)
+
+
+class RSVP(models.Model):
     owner = models.ForeignKey(User, null=True, blank=False, on_delete=models.SET_NULL)
     title = models.CharField(max_length=254, null=True, blank=False, unique=True)
-    head = models.TextField(max_length=600, null=True, blank=False)
-    country = models.ForeignKey(
-        EligibleCountry, null=True, blank=False, on_delete=models.SET_NULL
-    )
-    address = models.CharField(max_length=254, null=True, blank=False)
     thumbnail = models.ImageField(
         blank=False,
         null=True,
         default="help.jpg",
         upload_to=get_project_files_directory,
     )
+    info = models.TextField(max_length=1000, null=True, blank=False)
     creation_datetime = models.DateTimeField(null=True, auto_now_add=True)
-    launch_date = models.DateTimeField(null=True, default=None)
-    DEADLINE_CHOICES = [
-        ("30", "30 days"),
-        ("60", "60 days"),
-        ("90", "90 days"),
-    ]
-    deadline = models.CharField(
-        max_length=2,
-        choices=DEADLINE_CHOICES,
-        default="30",
-        null=True,
-        blank=True,
-    )
-    category = models.ForeignKey(
-        Category, null=True, blank=False, on_delete=models.SET_NULL
-    )
-    subcategory = models.ForeignKey(
-        Subcategory, blank=True, null=True, on_delete=models.SET_NULL
-    )
-    type = models.ForeignKey(Type, null=True, blank=False, on_delete=models.SET_NULL)
-    # Funding
-    fund_amount = models.FloatField(null=True, blank=False)
-    fund_spend = JSONField(null=True, default=dict, blank=True)
-    currency = models.CharField(max_length=10, null=True, blank=True)
-    # Story
-    description = RichTextField(
-        max_length=100000,
-        null=True,
-        blank=False,
-    )
-    ticket_price = models.FloatField(null=True, blank=True, default=0)
-    # Payment
-    wallet_address = models.CharField(max_length=254, null=True, blank=True)
-    current_reward = models.FloatField(null=False, blank=False, default=0)
-    raised_amount = models.FloatField(null=True, blank=True, default=0)
-    rewarded_amount = models.FloatField(null=True, blank=True, default=0)
-    staking_address = models.CharField(max_length=254, null=True, blank=True)
-    staking_abi = models.TextField(max_length=10000, null=True, blank=True)
+    event_date = models.DateTimeField(null=True, blank=False)
     approved = models.BooleanField(default=True)
-    live = models.BooleanField(default=False)
-    featured = models.BooleanField(default=False)
-    recommended = models.BooleanField(default=False)
-    project_live_datetime = models.DateTimeField(null=True, default=None, blank=True)
-    subscribed_users = models.ManyToManyField(
-        User, related_name="subscribed_projects", blank=True
-    )
-
-    @property
-    def number_of_subscribed_users(self):
-        return self.subscribed_users.count()
-
-    @property
-    def owner_username(self):
-        return self.owner.username if self.owner else None
-
-    @property
-    def owner_profile_picture(self):
-        if self.owner and self.owner.profile_picture:
-            return self.owner.profile_picture.url
-        return None
-
-    @property
-    def number_of_donators(self):
-        return len(
-            Contribution.objects.filter(project=self)
-            .values("contributor_wallet_address")
-            .distinct()
-        )
+    subscribers = models.ManyToManyField(User, related_name="rsvp_subscribed", blank=True)
 
     def __str__(self):
         return self.title
 
 
-class Incentive(models.Model):
-    title = models.CharField(max_length=50, null=False, blank=False)
-    description = models.TextField(max_length=254, null=False, blank=False)
-    included_incentives = JSONField(null=True, default=list)
-    estimated_delivery = models.DateTimeField(null=False, blank=False)
-    available_items = models.IntegerField(null=False, blank=False)
-    price = models.FloatField(null=False, blank=False)
-    reserved = models.IntegerField(blank=True, default=0)
-    project = models.ForeignKey(
-        Project, null=False, blank=False, on_delete=models.CASCADE
-    )
-    display_order = models.IntegerField(blank=True, null=True, default=None)
+class RSVPSubscriber(models.Model):
+    name = models.CharField(max_length=254, null=True, blank=True)
+    email = LowerCaseCharField(max_length=254, unique=True, null=False, blank=False)
 
     def __str__(self):
-        return self.title
+        return self.email
 
 
 class Contribution(models.Model):
-    contributor_wallet_address = models.CharField(max_length=254, null=True, blank=True)
-    contributor_email = models.CharField(max_length=254, null=True, blank=True)
-    project = models.ForeignKey(
-        Project, null=False, blank=False, on_delete=models.CASCADE
-    )
-    amount = models.FloatField(null=False, blank=False)
-    contribution_method = models.CharField(max_length=254, default="FND")
-    contribution_datetime = models.DateTimeField(auto_now_add=True)
-    hash = models.CharField(max_length=254, null=False, blank=False, unique=True)
-    selected_incentive = models.ForeignKey(
-        Incentive, null=True, blank=True, on_delete=models.CASCADE
-    )
-    eligible_for_selected_incentive = models.BooleanField(null=True, blank=True)
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='contributions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contributions')
+    amount = models.DecimalField(max_digits=18, decimal_places=8)
+    currency = models.CharField(max_length=10, default='USD')
+    transaction_hash = models.CharField(max_length=66, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_anonymous = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.contributor_email} contributed to {self.project}"
+        return f"{self.user.username} - {self.amount} {self.currency} to {self.campaign.title}"
 
 
-class PendingContribution(models.Model):
-    hash = models.CharField(max_length=254, null=False, blank=False, unique=True)
-    project = models.ForeignKey(
-        Project, null=False, blank=False, on_delete=models.CASCADE
-    )
-    selected_incentive = models.ForeignKey(
-        Incentive, null=True, blank=True, on_delete=models.CASCADE
-    )
-    contribution_amount = models.FloatField(null=True, blank=True)
-    contributor_email = models.CharField(max_length=254, null=True, blank=True)
-
-    def __str__(self):
-        return f"Pending contribution #{self.id} to {self.project}"
-
-
-class TokenPrice(models.Model):
-    price = models.FloatField(blank=False, null=False)
-    price_datetime = models.DateTimeField(auto_now=True)
+class PaymentSession(models.Model):
+    """
+    Manages payment processing sessions
+    """
+    contribution = models.OneToOneField(Contribution, on_delete=models.CASCADE, related_name="payment_session")
+    session_id = models.CharField(max_length=100, unique=True)
+    payment_method = models.CharField(max_length=50, default="card")
+    
+    # Session data
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    
+    # Callback URLs
+    success_url = models.URLField(max_length=500)
+    cancel_url = models.URLField(max_length=500)
 
     def __str__(self):
-        return f"${self.price} @ {self.price_datetime}"
+        return f"Payment session {self.session_id} for {self.contribution}"
+    
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at 
 
 
-class ProjectFile(models.Model):
-    owner = models.ForeignKey(
-        Project, null=True, blank=False, on_delete=models.SET_NULL
-    )
-    file = models.FileField(
-        blank=False,
-        null=False,
-        upload_to=get_project_files_directory,
-        validators=[
-            FileExtensionValidator(
-                allowed_extensions=["pdf", "doc", "docx", "jpg", "jpeg", "png"]
-            )
-        ],
-    )
+class Campaign(models.Model):
+    """
+    Campaign model for managing fundraising campaigns
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('active', 'Active'),
+        ('funded', 'Funded'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='campaigns')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    story = models.TextField(blank=True, null=True)
+    image = models.ImageField(upload_to='campaign_images/', null=True, blank=True)
+    video_url = models.URLField(max_length=255, blank=True, null=True)
+    fund_amount = models.DecimalField(max_digits=18, decimal_places=8)
+    currency = models.CharField(max_length=10, default='USD')
+    token_address = models.CharField(max_length=42, blank=True, null=True)
+    token_name = models.CharField(max_length=50, blank=True, null=True)
+    token_symbol = models.CharField(max_length=10, blank=True, null=True)
+    start_date = models.DateTimeField(default=timezone.now)
+    end_date = models.DateTimeField(blank=True, null=True)
+    contract_address = models.CharField(max_length=42, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"File {self.id} for {self.owner}" 
+        return self.title
+
+    @property
+    def total_raised(self):
+        return sum(contribution.amount for contribution in self.contributions.all())
+    
+    @property
+    def total_contributors(self):
+        return self.contributions.values('user').distinct().count()
+    
+    @property
+    def is_funded(self):
+        return self.total_raised >= self.fund_amount
+    
+    @property
+    def progress_percentage(self):
+        if self.fund_amount <= 0:
+            return 0
+        return min(100, int((self.total_raised / self.fund_amount) * 100))
+
+
+class Release(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+    ]
+    
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='releases')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    amount = models.DecimalField(max_digits=18, decimal_places=8)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    request_date = models.DateTimeField(auto_now_add=True)
+    release_date = models.DateTimeField(blank=True, null=True)
+    transaction_hash = models.CharField(max_length=66, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.campaign.title} - {self.title} ({self.status})"
+
+
+class Milestone(models.Model):
+    """
+    Milestone model for tracking campaign progress
+    """
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='milestones')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    target_amount = models.DecimalField(max_digits=18, decimal_places=8)
+    current_amount = models.DecimalField(max_digits=18, decimal_places=8, default=0)
+    due_date = models.DateTimeField(blank=True, null=True)
+    completed = models.BooleanField(default=False)
+    completion_date = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.campaign.title} - {self.title}"
+    
+    @property
+    def progress_percentage(self):
+        if self.target_amount <= 0:
+            return 0
+        return min(100, int((self.current_amount / self.target_amount) * 100))
+
+
+class Update(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='updates')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    image = models.ImageField(upload_to='campaign_updates/', null=True, blank=True)
+    attachment = models.FileField(upload_to='campaign_attachments/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.campaign.title} - {self.title}"
+
+
+class Comment(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_edited = models.BooleanField(default=False)
+    reported = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.campaign.title}" 

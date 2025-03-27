@@ -13,9 +13,9 @@ const ProjectsPage = () => {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/api/projects/');
-        setProjects(response.data.projects);
-        setFilteredProjects(response.data.projects);
+        const response = await axios.get(`${process.env.REACT_APP_API_URL || ''}/api/projects/`);
+        setProjects(response.data.projects || []);
+        setFilteredProjects(response.data.projects || []);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching projects:', err);
@@ -35,7 +35,7 @@ const ProjectsPage = () => {
       const lowercasedTerm = searchTerm.toLowerCase();
       const filtered = projects.filter(project => 
         project.title.toLowerCase().includes(lowercasedTerm) || 
-        project.head.toLowerCase().includes(lowercasedTerm) ||
+        (project.description && project.description.toLowerCase().includes(lowercasedTerm)) ||
         (project.category && project.category.toLowerCase().includes(lowercasedTerm))
       );
       setFilteredProjects(filtered);

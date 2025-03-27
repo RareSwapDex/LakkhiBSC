@@ -25,6 +25,16 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>Lakkhi Funding</title>
+    <script>
+      window.addEventListener('load', function() {
+        // Check if MetaMask is installed
+        if (typeof window.ethereum !== 'undefined') {
+          console.log('MetaMask is installed!');
+        } else {
+          console.log('MetaMask is not installed!');
+        }
+      });
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

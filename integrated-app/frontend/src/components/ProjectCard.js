@@ -1,70 +1,77 @@
 import React from 'react';
-import { Card, ProgressBar, Button } from 'react-bootstrap';
+import { Card, Badge, ProgressBar } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 
 const ProjectCard = ({ project }) => {
-  // Calculate the funding progress percentage
-  const progressPercentage = 
-    project.fund_amount > 0 
-      ? Math.min(100, (project.raised_amount / project.fund_amount) * 100) 
-      : 0;
+  // Calculate progress percentage
+  const progressPercentage = project.fund_percentage || 0;
+  
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
 
   return (
-    <Card className="mb-4 h-100 shadow-sm">
-      <Card.Img 
-        variant="top" 
-        src={project.thumbnail || 'https://via.placeholder.com/300x200'} 
-        alt={project.title}
-        style={{ height: '180px', objectFit: 'cover' }}
-      />
+    <Card className="h-100 shadow-sm">
+      {project.image ? (
+        <Card.Img 
+          variant="top" 
+          src={project.image} 
+          style={{ height: '180px', objectFit: 'cover' }}
+        />
+      ) : (
+        <div 
+          className="bg-light d-flex align-items-center justify-content-center"
+          style={{ height: '180px' }}
+        >
+          <span className="text-muted">No Image</span>
+        </div>
+      )}
+      
       <Card.Body className="d-flex flex-column">
-        <Card.Title>{project.title}</Card.Title>
-        <Card.Subtitle className="mb-2 text-muted">by {project.owner_username}</Card.Subtitle>
-        <Card.Text className="text-truncate">
-          {project.head}
+        <div className="mb-2">
+          {project.category && (
+            <Badge bg="primary" className="me-2">{project.category}</Badge>
+          )}
+          <Badge bg="secondary">{project.blockchain_chain || 'BSC'}</Badge>
+        </div>
+        
+        <Card.Title className="mb-2">{project.title}</Card.Title>
+        
+        <Card.Text className="mb-3 text-truncate">
+          {project.description || 'No description available'}
         </Card.Text>
         
         <div className="mt-auto">
-          <div className="d-flex justify-content-between align-items-center mb-2">
-            <small>{project.raised_amount.toFixed(2)} raised</small>
-            <small>{progressPercentage.toFixed(0)}%</small>
+          <div className="d-flex justify-content-between mb-2">
+            <small>{project.raised_amount || 0} {project.fund_currency}</small>
+            <small>raised of {project.fund_amount} {project.fund_currency}</small>
           </div>
+          
           <ProgressBar 
             now={progressPercentage} 
-            variant={progressPercentage >= 100 ? "success" : "primary"}
+            variant={progressPercentage >= 100 ? "success" : "primary"} 
             className="mb-3"
           />
           
-          <div className="d-flex justify-content-between">
-            <Button 
-              as={Link} 
-              to={`/projects/${project.id}`} 
-              variant="outline-primary"
-              size="sm"
-            >
-              View Details
-            </Button>
-            
-            {project.live && (
-              <Button 
-                as={Link} 
-                to={`/donate/${project.id}`} 
-                variant="primary"
-                size="sm"
-              >
-                Donate
-              </Button>
-            )}
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="small text-muted">
+              {project.number_of_donators || 0} Backers
+            </div>
+            <div className="small text-muted">
+              Created: {formatDate(project.created_at)}
+            </div>
           </div>
+          
+          <Link 
+            to={`/projects/${project.id}`}
+            className="btn btn-outline-primary w-100"
+          >
+            View Project
+          </Link>
         </div>
       </Card.Body>
-      <Card.Footer className="text-muted">
-        <small>
-          {project.live 
-            ? 'Campaign is live' 
-            : 'Campaign is not yet live'}
-        </small>
-      </Card.Footer>
     </Card>
   );
 };

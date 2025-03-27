@@ -1,0 +1,27 @@
+# Lakkhi Project Conversation Summary
+
+## Project Overview
+- Working on the Lakkhi program integrated app
+- Backend using Django (version 5.1.7) running on port 8088
+- Located at ~/projects/lakkhi-program/integrated-app/backend
+
+## Work Completed
+- Explored backend code structure
+- Examined Django app configuration
+- Reviewed lakkhi_app views.py file which had recent changes
+- Discussed system warnings related to CKEditor 4.22.1 security issues
+
+## Environment Details
+- Running on WSL Ubuntu 22.04
+- Python environment shows warnings about urllib3 and chardet versions
+- System is using Django CKEditor which has security issues that need addressing
+
+## Next Steps
+- Consider upgrading or replacing CKEditor with CKEditor 5 or another editor
+- Address any security vulnerabilities
+- Continue development on the integrated application
+
+## Technical Notes
+- Development server runs at http://127.0.0.1:8088/
+- File watching is enabled with StatReloader
+- Changes to views.py trigger server reload

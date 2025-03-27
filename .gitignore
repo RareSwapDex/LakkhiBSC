@@ -35,3 +35,4 @@ media
 *.so
 *.egg
 *.egg-info/
+rarefnd-reference/

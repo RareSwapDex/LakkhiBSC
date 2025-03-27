@@ -1,0 +1,1053 @@
+from datetime import timedelta
+import json
+from pprint import pprint
+from django.http import HttpResponse, JsonResponse
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.core.files.images import ImageFile
+import io
+import hashlib
+import uuid
+import requests
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
+from django.core.mail import send_mail
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
+from . import web3_helper_functions
+from . import venly  # Keep venly import - we now have our own implementation
+from .custom_wallet import wallet_manager
+from .models import (
+    Project,
+    Category,
+    Contribution,
+    TokenPrice,
+    User,
+    Incentive,
+    Subcategory,
+    Country,
+    ProjectFile,
+    Type,
+    EligibleCountry,
+    RSVP,
+    RSVPSubscriber,
+)
+from .web3_helper_functions import (
+    deploy_staking_contract, 
+    get_token_info,
+    stake_tokens
+)
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.core.cache import cache
+from threading import Thread
+import time
+from django.shortcuts import get_object_or_404
+from django.utils.text import slugify
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def api_root(request):
+    """API root providing information about available endpoints"""
+    api_info = {
+        "name": "Lakkhi Funding API",
+        "version": "1.0",
+        "description": "API for the Lakkhi decentralized crowdfunding platform",
+        "endpoints": {
+            "projects": {
+                "list": "/api/projects/",
+                "detail": "/api/projects/{id}/",
+                "create": "/api/projects/add/",
+                "publish": "/api/projects/{id}/publish/",
+                "contributions": "/api/projects/{id}/contributions/",
+            },
+            "incentives": {
+                "list": "/api/incentives/{project_id}/",
+            },
+            "token": {
+                "validate": "/api/token/validate/",
+                "price": "/api/token/price/"
+            }
+        }
+    }
+    return Response(api_info)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def projects_list(request):
+    """Get a list of all projects"""
+    try:
+        projects = Project.objects.filter(live=True)
+        projects_data = []
+        
+        for project in projects:
+            project_data = {
+                "id": project.id,
+                "title": project.title,
+                "description": project.description,
+                "fund_amount": project.fund_amount,
+                "fund_currency": project.currency,
+                "raised_amount": project.raised_amount,
+                "fund_percentage": project.fund_percentage,
+                "image": request.build_absolute_uri(project.image) if project.image else None,
+                "thumbnail": request.build_absolute_uri(project.thumbnail) if project.thumbnail else None,
+                "category": project.category.name if project.category else None,
+                "blockchain_chain": project.blockchain_chain,
+                "created_at": project.creation_datetime,
+                "live": project.live,
+                "featured": project.featured,
+                "number_of_donators": project.number_of_donators,
+                "owner_username": project.owner_username,
+                "wallet_address": project.wallet_address,
+                "token_address": project.token_address
+            }
+            projects_data.append(project_data)
+        
+        return Response({"success": True, "projects": projects_data})
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def projects_details_by_id(request, id):
+    """Get project details by ID"""
+    try:
+        project = get_object_or_404(Project, id=id)
+        
+        # Get incentives
+        incentives = Incentive.objects.filter(project=project)
+        incentives_data = []
+        
+        for incentive in incentives:
+            incentive_data = {
+                "id": incentive.id,
+                "title": incentive.title,
+                "description": incentive.description,
+                "price": incentive.price,
+                "currency": incentive.currency,
+                "available_items": incentive.available_items,
+                "claimed_items": incentive.claimed_items,
+                "estimated_delivery": incentive.estimated_delivery,
+            }
+            incentives_data.append(incentive_data)
+        
+        # Get token info if available
+        token_info = None
+        if project.token_address:
+            token_validation = validate_token_address(project.token_address)
+            if token_validation["success"]:
+                token_info = token_validation["token_info"]
+        
+        # Construct project data
+        project_data = {
+            "id": project.id,
+            "title": project.title,
+            "description": project.description,
+            "project_story": project.project_story,
+            "fund_amount": project.fund_amount,
+            "fund_currency": project.currency,
+            "raised_amount": project.raised_amount,
+            "fund_percentage": project.fund_percentage,
+            "image": request.build_absolute_uri(project.image) if project.image else None,
+            "thumbnail": request.build_absolute_uri(project.thumbnail) if project.thumbnail else None,
+            "category": project.category.name if project.category else None,
+            "blockchain_chain": project.blockchain_chain,
+            "created_at": project.creation_datetime,
+            "live": project.live,
+            "featured": project.featured,
+            "number_of_donators": project.number_of_donators,
+            "owner_username": project.owner_username,
+            "owner_profile_picture": project.owner_profile_picture,
+            "wallet_address": project.wallet_address,
+            "token_address": project.token_address,
+            "token_info": token_info,
+            "staking_address": project.staking_address,
+            "incentives": incentives_data
+        }
+        
+        return Response({"success": True, "project": project_data})
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def incentives(request, project_id):
+    """Get incentives for a project"""
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        incentives = Incentive.objects.filter(project=project)
+        
+        incentives_data = []
+        for incentive in incentives:
+            incentive_data = {
+                "id": incentive.id,
+                "title": incentive.title,
+                "description": incentive.description,
+                "price": incentive.price,
+                "currency": incentive.currency,
+                "available_items": incentive.available_items,
+                "claimed_items": incentive.claimed_items,
+                "estimated_delivery": incentive.estimated_delivery,
+            }
+            incentives_data.append(incentive_data)
+        
+        return Response({"success": True, "incentives": incentives_data})
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def add_project(request):
+    """Create a new project"""
+    try:
+        data = request.data
+        basic_data = {}
+        
+        # Process basic data
+        for key, value in request.data.items():
+            if key.startswith('basics.'):
+                field_name = key.split('.')[1]
+                basic_data[field_name] = value
+        
+        # Create project
+        project = Project()
+        
+        # Process string fields
+        for field in ['projectTitle', 'projectDescription', 'walletAddress', 'tokenAddress', 'blockchainChain']:
+            if field in basic_data:
+                if field == 'projectTitle':
+                    project.title = basic_data[field]
+                elif field == 'projectDescription':
+                    project.description = basic_data[field]
+                elif field == 'walletAddress':
+                    project.wallet_address = basic_data[field]
+                elif field == 'tokenAddress':
+                    project.token_address = basic_data[field]
+                elif field == 'blockchainChain':
+                    # Map blockchain_chain to owner_type field in database
+                    project.owner_type = basic_data[field]
+        
+        # Process numeric fields
+        if 'projectFundAmount' in basic_data and basic_data['projectFundAmount']:
+            project.fund_amount = float(basic_data['projectFundAmount'])
+        
+        if 'projectFundCurrency' in basic_data:
+            project.currency = basic_data['projectFundCurrency']
+            
+        # Process project story
+        story_data = {}
+        for key, value in request.data.items():
+            if key.startswith('story.'):
+                field_name = key.split('.')[1]
+                story_data[field_name] = value
+                
+        if 'projectStory' in story_data:
+            project.head = story_data['projectStory']
+        
+        # Check for required token address
+        if not project.token_address:
+            return Response(
+                {"success": False, "message": "Token address is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+            
+        # Process boolean fields
+        if 'activateImmediately' in basic_data:
+            activate_immediately = basic_data['activateImmediately'] == 'true'
+            if activate_immediately:
+                project.live = True
+                project.project_live_datetime = timezone.now()
+        else:
+            activate_immediately = False
+            
+        # Set default values for required fields
+        project.approved = True
+        
+        # Save the project
+        project.save()
+        
+        # Process incentives
+        incentives_data = request.data.get('rewards.projectRewards')
+        if incentives_data:
+            try:
+                incentives_list = json.loads(incentives_data)
+                for incentive_data in incentives_list:
+                    incentive = Incentive(
+                        project=project,
+                        title=incentive_data.get('title', ''),
+                        description=incentive_data.get('description', ''),
+                        price=float(incentive_data.get('price', 0)),
+                        currency=project.currency,  # Updated to match the db field
+                        available_items=int(incentive_data.get('availableItems', 0)) if incentive_data.get('availableItems') else None,
+                        estimated_delivery=incentive_data.get('estimatedDelivery'),
+                        display_order=int(incentive_data.get('displayOrder', 1))
+                    )
+                    incentive.save()
+            except json.JSONDecodeError:
+                pass  # Handle JSON parsing error silently
+        
+        # Deploy smart contract if requested
+        create_contract = request.data.get('create_contract') == 'true'
+        
+        if create_contract and activate_immediately:
+            # This will happen in the publish_project view
+            pass
+        elif create_contract:
+            # Deploy contract without publishing
+            try:
+                contract_result = deploy_staking_contract(
+                    project_name=project.title,
+                    project_target=project.fund_amount,
+                    project_owner=project.wallet_address or "0x0000000000000000000000000000000000000000",
+                    token_address=project.token_address
+                )
+                
+                if contract_result["success"]:
+                    project.staking_address = contract_result["contract_address"]
+                    project.staking_abi = json.dumps(contract_result["contract_abi"])
+                    project.live = True
+                    project.project_live_datetime = timezone.now()
+                    project.save()
+            
+                return Response(
+                    {
+                        "success": True,
+                        "message": "Project published successfully",
+                        "contract_address": contract_result["contract_address"],
+                        "owner_address": contract_result.get("owner_address", project.wallet_address),
+                        "token_address": project.token_address
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            except Exception as e:
+                print(f"Error deploying contract: {e}")
+                return Response(
+                    {"success": False, "message": f"Error deploying contract: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+        except Exception as e:
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def create_wallet(request):
+    """Create a wallet for a user"""
+    if request.method == "POST":
+        try:
+            email = request.data.get("email")
+            if not email:
+                return Response(
+                    {"success": False, "message": "Email is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Create wallet with email as identifier using our custom wallet manager
+            wallet = wallet_manager.get_or_create_wallet(email)
+            if not wallet:
+                return Response(
+                    {"success": False, "message": "Failed to create wallet"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            # Return wallet details
+            return Response(
+                {
+                    "success": True,
+                    "message": "Wallet created successfully",
+                    "wallet_address": wallet.get("address"),
+                    "wallet_id": wallet.get("id"),
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            print(f"Error creating wallet: {e}")
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def verify_wallet(request):
+    """Verify wallet ownership using signature"""
+    if request.method == "POST":
+        try:
+            # Get wallet address and signature from request
+            wallet_address = request.data.get("address")
+            signature = request.data.get("signature")
+            message = request.data.get("message", "Lakkhi Auth")
+            
+            if not wallet_address or not signature:
+                return Response(
+                    {"success": False, "message": "Address and signature are required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Verify the signature using our wallet manager
+            is_verified = wallet_manager.verify_wallet_ownership(wallet_address, signature, message)
+            
+            if is_verified:
+                # If verified, check if we need to create a local wallet for this address
+                wallet = wallet_manager.get_wallet_by_address(wallet_address)
+                if not wallet:
+                    # Create a new wallet entry with the address as the identifier
+                    # This allows connecting external wallets without requiring email
+                    wallet = wallet_manager.create_wallet(wallet_address)
+            
+            return Response(
+                {
+                    "success": is_verified,
+                    "message": "Wallet verified successfully" if is_verified else "Wallet verification failed",
+                    "wallet_address": wallet_address,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            print(f"Error verifying wallet: {e}")
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def process_payment(request):
+    """Process a card payment through Mercuryo"""
+    if request.method == "POST":
+        try:
+            email = request.data.get("email")
+            amount = request.data.get("amount")
+            project_id = request.data.get("project_id")
+            selected_incentive_id = request.data.get("selected_incentive_id")
+            
+            if not email or not amount or not project_id:
+                return Response(
+                    {"success": False, "message": "Missing required fields"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Create wallet for the user
+            wallet = wallet_manager.get_or_create_wallet(email)
+            if not wallet:
+                return Response(
+                    {"success": False, "message": "Failed to create wallet"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            
+            # For demo purposes we'll just return a success response
+            # In a real implementation, you would integrate with Mercuryo here
+            
+            return Response(
+                {
+                    "success": True,
+                    "message": "Payment processed successfully",
+                    "transaction_id": f"tx_{uuid.uuid4().hex[:16]}",
+                    "wallet_address": wallet.get("address")
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            print(f"Error processing payment: {e}")
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+@api_view(["POST"])
+def mercuryo_callback(request):
+    """Handle Mercuryo payment callback"""
+    if request.method == "POST":
+        try:
+            # Verify the callback data (signature, etc.)
+            # This will depend on Mercuryo's callback format
+            
+            data = request.data
+            transaction_id = data.get("transaction_id")
+            status_code = data.get("status")
+            wallet_address = data.get("wallet_address")
+            bnb_amount = data.get("crypto_amount")
+            email = data.get("email")
+            project_id = data.get("project_id")
+            selected_incentive_id = data.get("selected_incentive_id")
+            
+            if status_code != "success":
+                # Payment failed or is still processing
+                return Response(
+                    {"success": False, "message": f"Payment status: {status_code}"},
+                    status=status.HTTP_200_OK,  # Always return 200 to Mercuryo
+                )
+            
+            # Get the project
+            try:
+                project = Project.objects.get(id=project_id)
+            except Project.DoesNotExist:
+                return Response(
+                    {"success": False, "message": "Project not found"},
+                    status=status.HTTP_200_OK,  # Always return 200 to Mercuryo
+                )
+            
+            # Get the wallet
+            wallet = wallet_manager.get_wallet_by_identifier(email)
+            if not wallet:
+                return Response(
+                    {"success": False, "message": "Wallet not found"},
+                    status=status.HTTP_200_OK,
+                )
+            
+            # Calculate swap rates
+            swap_rates = wallet_manager.get_swap_rates(bnb_amount)
+            if not swap_rates["success"]:
+                return Response(
+                    {"success": False, "message": "Failed to get swap rates"},
+                    status=status.HTTP_200_OK,
+                )
+            
+            # Execute the swap from BNB to LAKKHI
+            swap_result = wallet_manager.swap_bnb_to_token(email, bnb_amount)
+            if not swap_result["success"]:
+                return Response(
+                    {"success": False, "message": "Swap failed"},
+                    status=status.HTTP_200_OK,
+                )
+            
+            # Get the staking contract for the project
+            staking_contract_address = project.contract_address
+            if not staking_contract_address:
+                return Response(
+                    {"success": False, "message": "Project has no staking contract"},
+                    status=status.HTTP_200_OK,
+                )
+            
+            # Stake the tokens
+            tokens_received = swap_result.get("tokens_received", swap_rates["outputAmount"])
+            stake_result = wallet_manager.stake_tokens(email, staking_contract_address, tokens_received)
+            if not stake_result["success"]:
+                return Response(
+                    {"success": False, "message": "Staking failed"},
+                    status=status.HTTP_200_OK,
+                )
+            
+            # Create contribution record
+            contribution = Contribution(
+                project=project,
+                amount=tokens_received,
+                contributor_email=email,
+                contributor_address=wallet["address"],
+                transaction_hash=stake_result["transaction_hash"],
+            )
+            
+            # If there's an incentive selected, link it
+            if selected_incentive_id:
+                try:
+                    incentive = Incentive.objects.get(id=selected_incentive_id)
+                    contribution.incentive = incentive
+                except Incentive.DoesNotExist:
+                    pass
+            
+            contribution.save()
+            
+            return Response(
+                {
+                    "success": True,
+                    "message": "Payment processed and tokens staked successfully",
+                    "contribution_id": contribution.id,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            print(f"Error in Mercuryo callback: {e}")
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_200_OK,  # Always return 200 to Mercuryo
+            )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def project_contributions(request, project_id):
+    """Get contributions for a project"""
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        contributions = Contribution.objects.filter(project=project).order_by('-created_at')
+        
+        contributions_data = []
+        for contribution in contributions:
+            # Skip anonymous contributions or show limited data
+            if contribution.anonymous:
+                contributor_name = "Anonymous"
+                contributor_id = None
+            else:
+                contributor_name = contribution.user.username if contribution.user else "Guest"
+                contributor_id = contribution.user.id if contribution.user else None
+            
+            contribution_data = {
+                "id": contribution.id,
+                "amount": contribution.amount,
+                "currency": contribution.currency,
+                "transaction_hash": contribution.transaction_hash,
+                "contributor_name": contributor_name,
+                "contributor_id": contributor_id,
+                "created_at": contribution.created_at,
+                "message": contribution.message,
+            }
+            contributions_data.append(contribution_data)
+        
+        return Response({
+            "success": True, 
+            "contributions": contributions_data,
+            "total_contributions": len(contributions_data),
+            "total_amount": sum([c.amount for c in contributions])
+        })
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
+
+
+def validate_token_address(token_address):
+    """
+    Validate if a token address is valid on the current blockchain
+    """
+    try:
+        if not token_address or not token_address.startswith('0x'):
+            return {
+                "success": False,
+                "message": "Invalid token address format",
+            }
+        
+        # Get token information using web3_helper_functions
+        token_info = get_token_info(token_address)
+        
+        if not token_info["success"]:
+            return {
+                "success": False,
+                "message": token_info.get("message", "Failed to validate token"),
+            }
+        
+        return {
+            "success": True,
+            "message": "Token validated successfully",
+            "token_info": {
+                "name": token_info["name"],
+                "symbol": token_info["symbol"],
+                "decimals": token_info["decimals"],
+                "total_supply": token_info.get("total_supply_formatted", "Unknown"),
+            }
+        }
+    except Exception as e:
+        print(f"Error validating token: {e}")
+        return {
+            "success": False,
+            "message": f"Error validating token: {str(e)}",
+        }
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def token_validate(request):
+    """Validate token address"""
+    try:
+        token_address = request.data.get("token_address")
+        result = validate_token_address(token_address)
+        return Response(result)
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+def get_token_price(token_address=None):
+    """
+    Get the price of a token in USD
+    """
+    try:
+        if not token_address:
+            token_address = settings.TOKEN_ADDRESS
+            
+        # First check if token price is already cached
+        token_price_key = f'token_price_{token_address}'
+        cached_price = cache.get(token_price_key)
+        
+        if cached_price:
+            return {
+                "success": True,
+                "price_usd": cached_price,
+                "token_address": token_address,
+                "cached": True,
+            }
+            
+        # Check if we have a record in the database
+        try:
+            token_price = TokenPrice.objects.latest('last_updated')
+            if token_price and token_price.last_updated > timezone.now() - timedelta(hours=1):
+                # Cache the price for 10 minutes
+                cache.set(token_price_key, token_price.price, 600)
+                return {
+                    "success": True,
+                    "price_usd": token_price.price,
+                    "token_address": token_address,
+                    "last_updated": token_price.last_updated,
+                }
+        except TokenPrice.DoesNotExist:
+            pass
+        
+        # If not in cache or database, try to fetch from an external API
+        # This is a simplified example - you would need to integrate with a price oracle
+        price_api_url = f"https://api.coingecko.com/api/v3/simple/token_price/binance-smart-chain?contract_addresses={token_address}&vs_currencies=usd"
+        try:
+            response = requests.get(price_api_url, timeout=5)
+            if response.status_code == 200:
+                price_data = response.json()
+                if token_address in price_data and "usd" in price_data[token_address]:
+                    price = price_data[token_address]["usd"]
+                    
+                    # Store in database
+                    token_price, created = TokenPrice.objects.get_or_create(defaults={"price": price})
+                    if not created:
+                        token_price.price = price
+                        token_price.save()
+                    
+                    # Cache the price
+                    cache.set(token_price_key, price, 600)  # Cache for 10 minutes
+                    
+                    return {
+                        "success": True,
+                        "price_usd": price,
+                        "token_address": token_address,
+                        "source": "coingecko",
+                    }
+        except Exception as e:
+            print(f"Error fetching price from API: {e}")
+        
+        # Fallback to a default price
+        default_price = 0.01  # Default price in USD
+        return {
+            "success": True,
+            "price_usd": default_price,
+            "token_address": token_address,
+            "source": "default",
+            "note": "Using default price as actual price could not be determined",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error getting token price: {str(e)}",
+        }
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def token_price(request):
+    """Get token price"""
+    try:
+        token_address = request.query_params.get("token_address", settings.TOKEN_ADDRESS)
+        result = get_token_price(token_address)
+        return Response(result)
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+def background_token_cache_updater():
+    """
+    Background thread to periodically update token cache
+    This ensures the cache is always fresh even without user requests
+    """
+    while True:
+        try:
+            print("Starting token cache update...")
+            
+            # Define popular token addresses
+            popular_token_addresses = [
+                # Stablecoins
+                "0x55d398326f99059fF775485246999027B3197955",  # USDT (BSC)
+                "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",  # DAI (BSC)
+                "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",  # USDC (BSC)
+                "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",  # BUSD (BSC)
+                
+                # Major tokens
+                "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",  # WBNB (BSC)
+                "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",  # WETH (BSC)
+                "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",  # BTCB (BSC)
+                
+                # Platform tokens
+                settings.TOKEN_ADDRESS,  # Lakkhi token
+            ]
+            
+            # Deduplicate addresses
+            popular_token_addresses = list(set(popular_token_addresses))
+            
+            # Fetch and cache token details
+            tokens = []
+            for address in popular_token_addresses:
+                if not address.startswith('0x'):
+                    continue
+                
+                token_info = get_token_info(address)
+                if token_info["success"]:
+                    token_data = {
+                        "name": token_info["name"],
+                        "symbol": token_info["symbol"],
+                        "address": address,
+                        "decimals": token_info["decimals"],
+                        "total_supply": token_info["total_supply_formatted"],
+                        "logo_url": f"https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/smartchain/assets/{address}/logo.png"
+                    }
+                    tokens.append(token_data)
+                    
+                    # Cache individual token info for 24 hours
+                    token_cache_key = f'token_info_{address}'
+                    cache.set(token_cache_key, token_data, 86400)  # 24 hours
+            
+            # Cache the full token list for 1 hour
+            if tokens:
+                cache.set('popular_tokens', tokens, 3600)
+                print(f"Token cache updated with {len(tokens)} tokens")
+            
+        except Exception as e:
+            print(f"Error in token cache updater: {e}")
+        
+        # Sleep for 30 minutes before next update
+        time.sleep(1800)
+
+# Start the background thread when the app starts
+# Wrap this in a function to maintain proper indentation
+def start_background_thread():
+    try:
+        if not settings.DEBUG:  # Only start in production to avoid slowing down development
+            cache_thread = Thread(target=background_token_cache_updater, daemon=True)
+            cache_thread.start()
+            print("Token cache background thread started")
+    except Exception as e:
+        print(f"Failed to start token cache background thread: {e}")
+
+# Call the function to start the thread
+start_background_thread()
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def estimate_gas(request):
+    """Estimate gas costs for different token operations"""
+    if request.method == "POST":
+        try:
+            operation_type = request.data.get("operation_type")
+            token_address = request.data.get("token_address", settings.TOKEN_ADDRESS)
+            amount = request.data.get("amount", 0)
+            
+            if not operation_type:
+                return Response(
+                    {"success": False, "message": "Operation type is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Get gas estimate from web3_helper_functions
+            estimate = web3_helper_functions.estimate_gas_costs(operation_type, token_address)
+            
+            if not estimate["success"]:
+                return Response(
+                    {"success": False, "message": estimate.get("message", "Failed to estimate gas costs")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Add additional context based on the estimate
+            gas_info = {
+                "operation_type": operation_type,
+                "token_address": token_address,
+                "gas_amount": estimate.get("gas_amount", 0),
+                "gas_price_gwei": estimate.get("gas_price_gwei", 0),
+                "cost_eth": float(estimate.get("cost_eth", 0)),
+                "cost_usd": float(estimate.get("cost_usd", 0)),
+                "is_complex_token": estimate.get("is_complex_token", False),
+                "time_estimate": "30-60 seconds",  # Default estimate
+            }
+            
+            # Adjust time estimate based on gas amount and network congestion
+            if gas_info["gas_amount"] > 2000000:
+                gas_info["time_estimate"] = "2-5 minutes"
+            elif gas_info["gas_amount"] > 500000:
+                gas_info["time_estimate"] = "1-2 minutes"
+            
+            # Add token info if available
+            if token_address and token_address.startswith('0x'):
+                # Check cache first
+                token_cache_key = f'token_info_{token_address}'
+                cached_token_info = cache.get(token_cache_key)
+                
+                if cached_token_info:
+                    gas_info["token_info"] = cached_token_info
+                else:
+                    token_info = get_token_info(token_address)
+                    if token_info["success"]:
+                        token_data = {
+                            "name": token_info["name"],
+                            "symbol": token_info["symbol"],
+                            "decimals": token_info["decimals"],
+                        }
+                        gas_info["token_info"] = token_data
+            
+            # For multiple operations (like stake which requires approve + stake)
+            if operation_type == "stake":
+                # Calculate total for both approve and stake
+                approve_estimate = web3_helper_functions.estimate_gas_costs("approve", token_address)
+                
+                if approve_estimate["success"]:
+                    gas_info["steps"] = [
+                        {
+                            "name": "approve",
+                            "description": "Approve token spending",
+                            "gas_amount": approve_estimate.get("gas_amount", 0),
+                            "cost_usd": float(approve_estimate.get("cost_usd", 0)),
+                        },
+                        {
+                            "name": "stake",
+                            "description": "Stake tokens in contract",
+                            "gas_amount": estimate.get("gas_amount", 0),
+                            "cost_usd": float(estimate.get("cost_usd", 0)),
+                        }
+                    ]
+                    # Update total costs
+                    gas_info["total_cost_usd"] = gas_info["cost_usd"] + float(approve_estimate.get("cost_usd", 0))
+                    gas_info["total_gas_amount"] = gas_info["gas_amount"] + approve_estimate.get("gas_amount", 0)
+            
+            return Response({
+                "success": True,
+                "gas_info": gas_info,
+            })
+        except Exception as e:
+            print(f"Error estimating gas: {e}")
+            return Response(
+                {"success": False, "message": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def add_rsvp(request):
+    """Add RSVP to a project"""
+    try:
+        data = request.data
+        project_id = data.get("project_id")
+        email = data.get("email")
+        
+        # Check if project exists
+        try:
+            project = Project.objects.get(pk=project_id)
+        except Project.DoesNotExist:
+            return Response(
+                {"success": False, "message": "Project not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+            
+        # Check if email already RSVP'd
+        existing_rsvp = RSVP.objects.filter(project=project, email=email).first()
+        if existing_rsvp:
+            return Response(
+                {"success": False, "message": "Email already RSVP'd to this project"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create RSVP
+        rsvp = RSVP.objects.create(
+            project=project,
+            email=email,
+            name=data.get("name", ""),
+            wallet_address=data.get("wallet_address", "")
+        )
+        
+        # Add email to subscribers if requested
+        if data.get("subscribe", False):
+            RSVPSubscriber.objects.create(
+                rsvp=rsvp,
+                email=email
+            )
+            
+        # Update project stats
+        project.number_of_subscribed_users = RSVPSubscriber.objects.filter(rsvp__project=project).count()
+        project.save()
+        
+        return Response(
+            {"success": True, "message": "RSVP added successfully", "rsvp_id": rsvp.id},
+            status=status.HTTP_201_CREATED,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+@api_view(["PUT"])
+@permission_classes([AllowAny])
+def publish_project(request, project_id):
+    """Publish a project and deploy its staking smart contract"""
+    try:
+        project = Project.objects.get(pk=project_id)
+        
+        # Deploy staking contract
+        try:
+            contract_result = deploy_staking_contract(
+                project_name=project.title,
+                project_target=project.fund_amount,
+                project_owner=project.wallet_address or "0x0000000000000000000000000000000000000000", # Use wallet address as owner
+                token_address=project.token_address  # Use project-specific token address
+            )
+            
+            if contract_result["success"]:
+                # Save contract details to project
+                project.staking_address = contract_result["contract_address"]
+                project.staking_abi = json.dumps(contract_result["contract_abi"])
+                project.live = True
+                project.project_live_datetime = timezone.now()
+                project.save()
+                
+                return Response(
+                    {
+                        "success": True, 
+                        "message": "Project published successfully",
+                        "contract_address": contract_result["contract_address"],
+                        "owner_address": contract_result.get("owner_address", project.wallet_address),
+                        "token_address": project.token_address
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                return Response(
+                    {"success": False, "message": contract_result["message"]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        except Exception as e:
+            print(f"Error deploying contract: {e}")
+            return Response(
+                {"success": False, "message": f"Error deploying contract: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+    except Project.DoesNotExist:
+        return Response(
+            {"success": False, "message": "Project not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        ) 

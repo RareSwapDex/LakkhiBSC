@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Button, Card } from 'react-bootstrap';
+import { Container, Row, Col, Button, Card, Badge } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import ProjectCard from '../components/ProjectCard';
@@ -12,7 +12,7 @@ const HomePage = () => {
   useEffect(() => {
     const fetchFeaturedProjects = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_BASE_URL}/api/projects/`);
+        const response = await axios.get(`${process.env.REACT_APP_API_URL || ''}/api/projects/`);
         // Limit to 3 featured projects for homepage
         const featured = response.data.projects ? response.data.projects.slice(0, 3) : [];
         setFeaturedProjects(featured);
@@ -30,13 +30,15 @@ const HomePage = () => {
   return (
     <>
       {/* Hero Section */}
-      <div className="hero-section">
+      <div className="hero-section py-5" style={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #e4efe9 100%)' }}>
         <Container>
           <Row className="align-items-center">
             <Col md={7}>
-              <h1 className="display-4 mb-4">Fund Projects with LAKKHI Tokens</h1>
+              <Badge bg="success" className="mb-2">First Multi-Chain Platform</Badge>
+              <h1 className="display-4 mb-3">The First Decentralized Donation Platform for All Blockchains</h1>
               <p className="lead mb-4">
-                Support innovative projects and earn rewards with our blockchain-powered crowdfunding platform
+                Support blockchain projects with direct wallet donations - 
+                <strong> helping projects succeed while increasing token value</strong>
               </p>
               <div className="d-flex flex-wrap gap-2">
                 <Link to="/projects">
@@ -56,12 +58,64 @@ const HomePage = () => {
               <img
                 src="https://via.placeholder.com/500x400?text=Crowdfunding+Illustration"
                 alt="Crowdfunding Illustration"
-                className="img-fluid rounded"
+                className="img-fluid rounded shadow"
               />
             </Col>
           </Row>
         </Container>
       </div>
+
+      {/* Key Benefits Section */}
+      <Container className="py-5">
+        <Row className="mb-4">
+          <Col className="text-center">
+            <h2>Why Choose Our Platform?</h2>
+            <p className="text-muted">Boost your project's success with our unique blockchain crowdfunding model</p>
+          </Col>
+        </Row>
+        
+        <Row>
+          <Col md={3} className="mb-4">
+            <Card className="h-100 border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <div className="mb-3">🌐</div>
+                <h4>Multi-Chain Support</h4>
+                <p>Supporting all major blockchains with direct wallet integration</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          
+          <Col md={3} className="mb-4">
+            <Card className="h-100 border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <div className="mb-3">🔑</div>
+                <h4>Direct Wallet Connection</h4>
+                <p>No middlemen - direct wallet-to-wallet transactions</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          
+          <Col md={3} className="mb-4">
+            <Card className="h-100 border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <div className="mb-3">📈</div>
+                <h4>Increase Token Value</h4>
+                <p>Donations create buy pressure, increasing your token's price</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          
+          <Col md={3} className="mb-4">
+            <Card className="h-100 border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <div className="mb-3">🛡️</div>
+                <h4>Fully Decentralized</h4>
+                <p>True decentralization with transparent fund management</p>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      </Container>
 
       {/* Featured Projects Section */}
       <Container className="py-5">
@@ -76,7 +130,7 @@ const HomePage = () => {
             </Link>
           </Col>
         </Row>
-
+        
         {loading ? (
           <p className="text-center">Loading featured projects...</p>
         ) : error ? (
@@ -112,7 +166,7 @@ const HomePage = () => {
           <Row className="mb-5">
             <Col className="text-center">
               <h2>How It Works</h2>
-              <p className="text-muted">Fund projects using LAKKHI tokens on BSC blockchain</p>
+              <p className="text-muted">Our innovative blockchain donation process</p>
             </Col>
           </Row>
           
@@ -121,8 +175,8 @@ const HomePage = () => {
               <Card className="h-100 border-0 shadow-sm">
                 <Card.Body className="text-center">
                   <div className="display-4 mb-3">1</div>
-                  <h4>Create a Campaign</h4>
-                  <p>Set up your funding campaign with project details, funding goals, and rewards</p>
+                  <h4>Connect Your Wallet</h4>
+                  <p>Connect your crypto wallet to browse and support projects</p>
                 </Card.Body>
               </Card>
             </Col>
@@ -131,8 +185,8 @@ const HomePage = () => {
               <Card className="h-100 border-0 shadow-sm">
                 <Card.Body className="text-center">
                   <div className="display-4 mb-3">2</div>
-                  <h4>Receive Donations</h4>
-                  <p>Donors contribute BNB which gets converted to LAKKHI tokens via PancakeSwap</p>
+                  <h4>Create or Support</h4>
+                  <p>Create your own campaign or support existing projects with tokens</p>
                 </Card.Body>
               </Card>
             </Col>
@@ -141,8 +195,8 @@ const HomePage = () => {
               <Card className="h-100 border-0 shadow-sm">
                 <Card.Body className="text-center">
                   <div className="display-4 mb-3">3</div>
-                  <h4>Meet Your Goals</h4>
-                  <p>Once your funding goal is reached, funds are released to your project wallet</p>
+                  <h4>Track Progress</h4>
+                  <p>Monitor campaign progress in real-time with blockchain verification</p>
                 </Card.Body>
               </Card>
             </Col>

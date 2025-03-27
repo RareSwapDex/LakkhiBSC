@@ -24,7 +24,7 @@ This project consists of two main components:
 ### Backend (Django)
 - Built with Django and Django REST Framework
 - Handles user authentication and campaign management
-- Integrates with Venly for wallet creation and token swaps
+- Custom wallet solution for blockchain operations
 - Processes payments through Mercuryo
 
 ### Frontend (React)
@@ -81,7 +81,7 @@ This project consists of two main components:
 
 ### Backend Configuration
 - Set up environment variables in `.env` file for tokens and API keys
-- Configure Venly API credentials
+- Configure wallet API credentials
 - Set up Mercuryo integration for payment processing
 
 ### Frontend Configuration
@@ -94,8 +94,8 @@ To test the BSC mainnet blockchain integration with localhost:
 1. Set up environment variables (replace with your values):
    ```
    # In a terminal window:
-   export VENLY_CLIENT_ID=your-venly-client-id
-   export VENLY_CLIENT_SECRET=your-venly-client-secret
+   export WALLET_API_KEY=your-wallet-api-key
+   export WALLET_SECRET=your-wallet-secret
    export ADMIN_PRIVATE_KEY=your-admin-wallet-private-key
    export ADMIN_ADDRESS=your-admin-wallet-address
    ```

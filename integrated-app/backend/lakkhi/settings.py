@@ -108,24 +108,55 @@ AUTH_USER_MODEL = 'lakkhi_app.User'
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True  # For development only
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
 
 # Email settings
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
 DEFAULT_FROM_EMAIL = 'no-reply@lakkhi.com'
 
 # Blockchain Settings
-BSC_RPC_URL = 'https://bsc-dataseed.binance.org/'
+BSC_RPC_URL = os.environ.get('BSC_RPC_URL', 'https://bsc-dataseed.binance.org/')
 ADMIN_PRIVATE_KEY = os.environ.get('ADMIN_PRIVATE_KEY', '')
 ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS', '')
+
+# Token addresses
+# RAREFND_TOKEN = '0x264387ad73d19408e34b5d5e13a93174a35cea33'  # RareFnd token address
+LAKKHI_TOKEN = os.environ.get('LAKKHI_TOKEN', '0x264387ad73d19408e34b5d5e13a93174a35cea33')  # Default to RareFnd for testing
+TOKEN_ADDRESS = LAKKHI_TOKEN  # Set to LAKKHI_TOKEN for production
+
+# PancakeSwap Factory Settings
+STAKING_FACTORY_ADDRESS = os.environ.get('STAKING_FACTORY_ADDRESS', '0x10ED43C718714eb63d5aA57B78B54704E256024E')  # PancakeSwap Router
+
+# Client settings for compatibility
+CLIENT_ID = "TheRareAntiquities-capsule"
+CLIENT_SECRET = "0d6aa5fe-97ea-40f9-b839-276240448758"
 
 # AWS S3 Settings (if needed)
 AWS_ACCESS_KEY_ID = 'your-access-key'
 AWS_SECRET_ACCESS_KEY = 'your-secret-key'
 AWS_STORAGE_BUCKET_NAME = 'your-bucket-name'
 
-# Venly settings - Replace these before testing
-CLIENT_ID = os.environ.get('VENLY_CLIENT_ID', 'your-venly-client-id')
-CLIENT_SECRET = os.environ.get('VENLY_CLIENT_SECRET', 'your-venly-client-secret')
+# Custom Wallet settings - Replace these before testing
+WALLET_API_KEY = os.environ.get('WALLET_API_KEY', 'your-wallet-api-key')
+WALLET_SECRET = os.environ.get('WALLET_SECRET', 'your-wallet-secret')
 
 # REST Framework settings
 REST_FRAMEWORK = {
@@ -134,7 +165,7 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',  # Change to AllowAny for development
     ],
 }
 

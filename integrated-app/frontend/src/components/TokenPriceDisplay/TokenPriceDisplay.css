@@ -1,0 +1,105 @@
+.token-price-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+  border-radius: 10px;
+  padding: 15px 20px;
+  color: white;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  margin: 20px 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.token-info {
+  display: flex;
+  align-items: center;
+}
+
+.token-logo {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-right: 12px;
+  overflow: hidden;
+}
+
+.token-logo img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.token-name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+
+.token-price-container {
+  text-align: right;
+}
+
+.token-price {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.token-price-change {
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 2px 6px;
+  display: inline-block;
+}
+
+.price-up {
+  background-color: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.price-down {
+  background-color: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.buy-token-button {
+  background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.buy-token-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+}
+
+@media (max-width: 768px) {
+  .token-price-display {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  
+  .token-price-container {
+    text-align: left;
+  }
+  
+  .buy-token-button {
+    align-self: stretch;
+    text-align: center;
+  }
+} 
