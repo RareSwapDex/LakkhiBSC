@@ -63,6 +63,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       }
 
       // Try to validate using Web3.js directly if available (fallback method)
+      let web3TokenInfo = null;
       if (window.web3 || window.ethereum) {
         try {
           // Use the imported Web3 with provider
@@ -85,33 +86,131 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
           if (code === '0x' || code === '0x0') {
             throw new Error('Address is not a contract');
           }
+          
+          // Try to get token info
+          const tokenABI = [
+            { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+            { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+            { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+          ];
+          
+          const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
+          
+          try {
+            const [name, symbol, decimals] = await Promise.all([
+              tokenContract.methods.name().call(),
+              tokenContract.methods.symbol().call(),
+              tokenContract.methods.decimals().call()
+            ]);
+            
+            web3TokenInfo = {
+              name,
+              symbol,
+              decimals: parseInt(decimals),
+              address: checksumAddress,
+            };
+          } catch (tokenError) {
+            console.warn('Could not retrieve all token details:', tokenError);
+          }
         } catch (web3Error) {
-          console.log('Web3 validation error:', web3Error);
+          console.warn('Web3 validation error:', web3Error);
           // Continue to backend validation even if this fails
         }
       }
       
-      // Backend validation
-      const apiUrl = process.env.REACT_APP_API_URL || '';
-      console.log('Validating token at:', `${apiUrl}/api/token/validate/`);
+      // If we already have token info from Web3, use that instead of making API call
+      if (web3TokenInfo) {
+        setTokenInfo(web3TokenInfo);
+        return;
+      }
       
-      // Make sure token address is properly formatted for API call
-      // Clean address (trim spaces, lowercase) before sending to API
-      const formattedAddress = tokenAddress.trim();
+      // Backend validation - try multiple possible API endpoints
+      const apiUrls = [
+        process.env.REACT_APP_API_URL || '',
+        'https://lakkhi-fund-api.vercel.app',
+        'http://localhost:8000',
+      ];
       
-      const response = await axios.post(
-        `${apiUrl}/api/token/validate/`,
-        { token_address: formattedAddress },
-        { 
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 10000 // 10 second timeout 
+      let apiResponse = null;
+      let lastError = null;
+      
+      // Try each API URL until one works
+      for (const apiUrl of apiUrls) {
+        if (!apiUrl) continue;
+        
+        try {
+          console.log(`Trying to validate token at: ${apiUrl}/api/token/validate/`);
+          
+          // Clean address (trim spaces, lowercase) before sending to API
+          const formattedAddress = tokenAddress.trim();
+          
+          const response = await axios.post(
+            `${apiUrl}/api/token/validate/`,
+            { token_address: formattedAddress },
+            { 
+              headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              timeout: 5000 // 5 second timeout
+            }
+          );
+          
+          if (response.data.success) {
+            apiResponse = response;
+            break; // Found a working API
+          }
+        } catch (apiError) {
+          console.warn(`API call to ${apiUrl} failed:`, apiError);
+          lastError = apiError;
+          // Continue to next API
         }
-      );
+      }
       
-      if (response.data.success) {
-        setTokenInfo(response.data.token_info);
-      } else {
-        setError(response.data.message || 'Invalid token address');
+      // If any API call succeeded
+      if (apiResponse && apiResponse.data.success) {
+        setTokenInfo(apiResponse.data.token_info);
+      } 
+      // If we have Web3 token info as a fallback
+      else if (web3TokenInfo) {
+        setTokenInfo(web3TokenInfo);
+        console.log('Using Web3 fallback for token validation');
+      }
+      // All validation methods failed
+      else {
+        // For demo/testing purposes, allow token address to be considered valid with basic info
+        if (process.env.NODE_ENV === 'development' || process.env.REACT_APP_ENABLE_FALLBACK === 'true') {
+          console.warn('Using fallback token validation due to API issues');
+          
+          // Extract address part from the token address for symbol
+          const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
+          
+          const fallbackTokenInfo = {
+            name: 'Unknown Token',
+            symbol: `TKN${shortSymbol}`,
+            decimals: 18,
+            address: tokenAddress,
+            total_supply: 'Unknown'
+          };
+          
+          setTokenInfo(fallbackTokenInfo);
+        } else {
+          let errorMessage = 'Failed to validate token. Please check the address and try again.';
+          
+          if (lastError) {
+            if (lastError.code === 'ECONNABORTED') {
+              errorMessage = 'Request timed out. Please try again later.';
+            } else if (lastError.response) {
+              errorMessage = lastError.response.data?.message || `Server error: ${lastError.response.status}`;
+            } else if (lastError.request) {
+              errorMessage = 'Network error. Please check your connection and try again.';
+            } else {
+              errorMessage = lastError.message || errorMessage;
+            }
+          }
+          
+          setError(errorMessage);
+        }
       }
     } catch (err) {
       console.error('Error validating token:', err);

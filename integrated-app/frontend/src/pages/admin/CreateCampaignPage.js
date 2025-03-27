@@ -34,8 +34,16 @@ const CreateCampaignPage = () => {
       projectFundAmount: '',
       projectFundCurrency: 'USD',
       walletAddress: '',
-      tokenAddress: '', // New field for token address
+      tokenAddress: '',
     },
+    milestones: [
+      {
+        title: 'Initial Release',
+        description: 'Initial funding release upon campaign completion',
+        targetAmount: '',
+        dueDate: ''
+      }
+    ],
     rewards: {
       projectRewards: [
         {
@@ -49,6 +57,84 @@ const CreateCampaignPage = () => {
       ]
     }
   });
+  
+  // Handle milestone changes
+  const handleMilestoneChange = (index, field, value) => {
+    const updatedMilestones = [...formData.milestones];
+    updatedMilestones[index] = {
+      ...updatedMilestones[index],
+      [field]: value
+    };
+    
+    setFormData(prev => ({
+      ...prev,
+      milestones: updatedMilestones
+    }));
+  };
+  
+  // Add milestone
+  const addMilestone = () => {
+    setFormData(prev => ({
+      ...prev,
+      milestones: [
+        ...prev.milestones,
+        {
+          title: '',
+          description: '',
+          targetAmount: '',
+          dueDate: ''
+        }
+      ]
+    }));
+  };
+  
+  // Remove milestone
+  const removeMilestone = (index) => {
+    if (formData.milestones.length <= 1) {
+      setError('You must have at least one milestone');
+      return;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      milestones: prev.milestones.filter((_, i) => i !== index)
+    }));
+  };
+  
+  // Validate form including milestones
+  const validateForm = () => {
+    // Validate basic info
+    if (!formData.basics.projectTitle || !formData.basics.projectDescription || !formData.basics.projectFundAmount) {
+      setError('Please fill out all required fields');
+      return false;
+    }
+    
+    // Validate token
+    if (!formData.basics.tokenAddress || !tokenInfo) {
+      setError('Please provide and validate a token address');
+      return false;
+    }
+    
+    // Validate milestones
+    if (formData.milestones.some(m => !m.title || !m.description || !m.targetAmount)) {
+      setError('Please complete all milestone fields');
+      return false;
+    }
+    
+    // Calculate total milestone amounts
+    const totalMilestoneAmount = formData.milestones.reduce(
+      (sum, m) => sum + parseFloat(m.targetAmount || 0),
+      0
+    );
+    
+    // Compare with fund amount
+    if (Math.abs(totalMilestoneAmount - parseFloat(formData.basics.projectFundAmount)) > 0.01) {
+      setError(`Total milestone amounts (${totalMilestoneAmount}) must equal the fund amount (${formData.basics.projectFundAmount})`);
+      return false;
+    }
+    
+    return true;
+  };
   
   // Token validation function
   const validateToken = async () => {
@@ -197,6 +283,11 @@ const CreateCampaignPage = () => {
       return;
     }
     
+    // Validate form including milestones
+    if (!validateForm()) {
+      return;
+    }
+    
     setSubmitting(true);
     setError('Deploying smart contract. Please confirm the transaction in MetaMask when prompted...');
     
@@ -231,6 +322,9 @@ const CreateCampaignPage = () => {
       // Add description to story field
       formDataToSend.append('story.projectStory', formDataWithWallet.basics.projectDescription || '');
       
+      // Add milestones
+      formDataToSend.append('milestones', JSON.stringify(formDataWithWallet.milestones));
+      
       // Add rewards if included
       if (includeIncentives) {
         formDataToSend.append('rewards.projectRewards', JSON.stringify(formDataWithWallet.rewards.projectRewards));
@@ -249,39 +343,30 @@ const CreateCampaignPage = () => {
       
       // Step 3: Send data to the backend
       console.log('Sending campaign data to backend with contract info:', contractData);
-      const response = await axios.post(
-        `${process.env.REACT_APP_API_URL || ''}/api/projects/add/`,
-        formDataToSend,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
       
-      if (response.data.success) {
-        setSubmitSuccess(true);
-        console.log('Campaign created successfully:', response.data.project);
-        
-        // Navigate to the project detail page
-        const projectId = response.data.project.id;
-        
-        // Show success message before redirecting
-        setTimeout(() => {
-          navigate(`/projects/${projectId}`);
-        }, 1500);
-      } else {
-        setError(response.data.message || 'An error occurred while creating the campaign');
-      }
-    } catch (err) {
-      console.error('Error creating campaign:', err);
-      setError(`Campaign creation error: ${err.message || 'An error occurred while creating the campaign'}`);
-    } finally {
+      // Make API call to create campaign
+      const createResponse = await axios.post(`${process.env.REACT_APP_BASE_URL}/api/campaigns/`, formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      // Handle successful response
+      console.log('Campaign created:', createResponse.data);
+      
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        // Navigate to the new campaign page
+        navigate(`/campaigns/${createResponse.data.campaign_id}`);
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      setError(`Error creating campaign: ${error.message || 'Unknown error'}`);
       setSubmitting(false);
     }
   };
   
-  // Deploy smart contract using MetaMask
   const deploySmartContract = async () => {
     try {
       if (!account) {
@@ -572,123 +657,193 @@ const CreateCampaignPage = () => {
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Campaign Duration*</Form.Label>
-                  <Form.Select
+                  <Form.Label>Campaign Duration (days)*</Form.Label>
+                  <Form.Control
+                    type="number"
                     value={formData.basics.projectDeadlineDate}
                     onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
                     required
-                  >
-                    <option value="30">30 days</option>
-                    <option value="60">60 days</option>
-                    <option value="90">90 days</option>
-                  </Form.Select>
+                    min="1"
+                    max="365"
+                    placeholder="Enter number of days"
+                  />
                 </Form.Group>
               </Col>
             </Row>
             
             <Form.Group className="mb-3">
-              <Form.Check
+              <Form.Check 
                 type="checkbox"
-                id="activateImmediately"
-                label="Activate campaign immediately"
+                id="activate-immediately"
+                label="Activate campaign immediately after creation"
                 checked={formData.basics.activateImmediately}
                 onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
               />
             </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Check
-                type="checkbox"
-                id="includeIncentives"
-                label="Include incentives for backers"
-                checked={includeIncentives}
-                onChange={(e) => setIncludeIncentives(e.target.checked)}
-              />
-            </Form.Group>
           </Card.Body>
         </Card>
-
+        
+        {/* Milestones Section */}
+        <Card className="mb-3">
+          <Card.Header>
+            <h3 className="mb-0">Campaign Milestones</h3>
+            <small className="text-muted">Define how funds will be released as the campaign progresses</small>
+          </Card.Header>
+          <Card.Body>
+            <p className="text-info mb-3">
+              <strong>Note:</strong> The total target amount of all milestones must equal your campaign's funding goal.
+              Currently: {formData.milestones.reduce((sum, m) => sum + parseFloat(m.targetAmount || 0), 0)} / {formData.basics.projectFundAmount || 0}
+            </p>
+            
+            {formData.milestones.map((milestone, index) => (
+              <Card key={index} className="mb-3 border-light">
+                <Card.Header className="d-flex justify-content-between align-items-center">
+                  <h5 className="mb-0">Milestone #{index + 1}</h5>
+                  <Button 
+                    variant="outline-danger" 
+                    size="sm"
+                    onClick={() => removeMilestone(index)}
+                    disabled={formData.milestones.length <= 1}
+                  >
+                    Remove
+                  </Button>
+                </Card.Header>
+                <Card.Body>
+                  <Row>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Title*</Form.Label>
+                        <Form.Control
+                          type="text"
+                          value={milestone.title}
+                          onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
+                          required
+                          placeholder="e.g., Initial Development, Beta Release"
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Target Amount*</Form.Label>
+                        <Form.Control
+                          type="number"
+                          value={milestone.targetAmount}
+                          onChange={(e) => handleMilestoneChange(index, 'targetAmount', e.target.value)}
+                          required
+                          min="0"
+                          step="0.01"
+                          placeholder="Amount for this milestone"
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Row>
+                    <Col md={12}>
+                      <Form.Group className="mb-3">
+                        <Form.Label>Due Date</Form.Label>
+                        <Form.Control
+                          type="date"
+                          value={milestone.dueDate}
+                          onChange={(e) => handleMilestoneChange(index, 'dueDate', e.target.value)}
+                          placeholder="Expected completion date"
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+                  
+                  <Form.Group className="mb-3">
+                    <Form.Label>Description*</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      value={milestone.description}
+                      onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
+                      required
+                      placeholder="Describe what will be accomplished in this milestone"
+                    />
+                  </Form.Group>
+                </Card.Body>
+              </Card>
+            ))}
+            
+            <div className="d-grid gap-2">
+              <Button 
+                variant="outline-primary" 
+                onClick={addMilestone}
+                className="mt-2"
+              >
+                Add Another Milestone
+              </Button>
+            </div>
+          </Card.Body>
+        </Card>
+        
+        <Form.Group className="mb-3">
+          <Form.Check 
+            type="checkbox"
+            id="include-incentives"
+            label="Include supporter incentives (rewards)"
+            checked={includeIncentives}
+            onChange={(e) => setIncludeIncentives(e.target.checked)}
+          />
+        </Form.Group>
+        
         {includeIncentives && (
           <Card className="mb-3">
+            <Card.Header>
+              <h3 className="mb-0">Rewards</h3>
+            </Card.Header>
             <Card.Body>
-              <h5 className="mb-2">Campaign Incentive</h5>
-              
-              <Form.Group className="mb-2">
-                <Form.Label>Title*</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={formData.rewards.projectRewards[0].title}
-                  onChange={(e) => handleRewardChange(0, 'title', e.target.value)}
-                  required={includeIncentives}
-                  placeholder="Enter a title for this reward"
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-2">
-                <Form.Label>Description*</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                  value={formData.rewards.projectRewards[0].description}
-                  onChange={(e) => handleRewardChange(0, 'description', e.target.value)}
-                  required={includeIncentives}
-                  placeholder="Describe what backers will receive"
-                />
-              </Form.Group>
-              
-              <Row>
-                <Col md={4}>
-                  <Form.Group className="mb-2">
-                    <Form.Label>Price*</Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={formData.rewards.projectRewards[0].price}
-                      onChange={(e) => handleRewardChange(0, 'price', e.target.value)}
-                      required={includeIncentives}
-                      min="1"
-                      step="0.01"
-                      placeholder="Price"
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={4}>
-                  <Form.Group className="mb-2">
-                    <Form.Label>Quantity*</Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={formData.rewards.projectRewards[0].availableItems}
-                      onChange={(e) => handleRewardChange(0, 'availableItems', e.target.value)}
-                      required={includeIncentives}
-                      min="1"
-                      placeholder="Quantity"
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={4}>
-                  <Form.Group className="mb-2">
-                    <Form.Label>Delivery Date*</Form.Label>
-                    <Form.Control
-                      type="date"
-                      value={formData.rewards.projectRewards[0].estimatedDelivery}
-                      onChange={(e) => handleRewardChange(0, 'estimatedDelivery', e.target.value)}
-                      required={includeIncentives}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
+              {formData.rewards.projectRewards.map((reward, index) => (
+                <Row key={index} className="mb-3">
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Reward Title</Form.Label>
+                      <Form.Control
+                        type="text"
+                        value={reward.title}
+                        onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
+                        placeholder="e.g., Early Access"
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Price</Form.Label>
+                      <Form.Control
+                        type="number"
+                        value={reward.price}
+                        onChange={(e) => handleRewardChange(index, 'price', e.target.value)}
+                        min="0"
+                        step="0.01"
+                        placeholder="Minimum contribution to receive this reward"
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={12}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Description</Form.Label>
+                      <Form.Control
+                        as="textarea"
+                        rows={2}
+                        value={reward.description}
+                        onChange={(e) => handleRewardChange(index, 'description', e.target.value)}
+                        placeholder="Describe what supporters will receive"
+                      />
+                    </Form.Group>
+                  </Col>
+                </Row>
+              ))}
             </Card.Body>
           </Card>
         )}
         
-        <Button 
-          type="submit" 
-          variant="primary" 
-          size="lg" 
-          className="w-100 mt-4"
-          disabled={!connectedWallet || !isWalletVerified || submitting || (formData.basics.tokenAddress && !tokenInfo)}
-        >
-          Create Campaign
-        </Button>
+        <div className="d-grid gap-2">
+          <Button variant="primary" type="submit" size="lg">
+            Create Campaign
+          </Button>
+        </div>
       </Form>
     </Container>
   );
