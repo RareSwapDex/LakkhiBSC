@@ -167,57 +167,154 @@ export const ProviderContextProvider = ({ children }) => {
 
   // Connect wallet function
   const connectWallet = async () => {
-    console.log('Connecting wallet...', { provider, window_ethereum: window.ethereum });
+    console.log('Connecting wallet...', { windowEthereum: window.ethereum });
     
     try {
-      // First check if window.ethereum exists
-      if (!window.ethereum) {
-        console.error('MetaMask not installed!');
-        alert('MetaMask is not installed. Please install MetaMask to connect your wallet.');
+      // First check if any provider exists - look for various wallet options
+      if (!window.ethereum && !window.web3) {
+        console.error('No Web3 wallet detected!');
+        alert('No Web3 wallet detected. Please install MetaMask, TrustWallet, or another Web3 wallet.');
         return null;
       }
       
-      // Always use window.ethereum directly for connection requests
-      // This is more reliable than using the cached provider
-      console.log('Requesting accounts directly from window.ethereum');
-      
-      try {
-        // Request accounts - this will prompt the user to connect if not already connected
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        console.log('Accounts received:', accounts);
-        
-        if (accounts && accounts.length > 0) {
-          // Set the account and connection state
-          setAccount(accounts[0]);
-          setIsConnected(true);
+      // If we have Ethereum provider available
+      if (window.ethereum) {
+        try {
+          // Force enable the ethereum provider
+          // This helps when multiple wallets are installed
+          if (window.ethereum.enable) {
+            try {
+              await window.ethereum.enable();
+              console.log('Ethereum provider enabled');
+            } catch (enableError) {
+              console.error('Error enabling ethereum provider:', enableError);
+              // Continue anyway as eth_requestAccounts might still work
+            }
+          }
           
-          // Make sure provider and web3 are set
-          setProvider(window.ethereum);
-          setWeb3(new Web3(window.ethereum));
+          console.log('Requesting accounts directly from window.ethereum');
+          // Request accounts - this will prompt the user to connect if not already connected
+          const accounts = await window.ethereum.request({ 
+            method: 'eth_requestAccounts',
+            params: []
+          });
+          console.log('Accounts received from eth_requestAccounts:', accounts);
           
-          // Get chain ID
-          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-          setChainId(chainId);
+          if (accounts && accounts.length > 0) {
+            // Set the account and connection state
+            setAccount(accounts[0]);
+            setIsConnected(true);
+            
+            // Make sure provider and web3 are set
+            setProvider(window.ethereum);
+            setWeb3(new Web3(window.ethereum));
+            
+            // Get chain ID
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            setChainId(chainId);
+            
+            console.log('Successfully connected to wallet:', accounts[0]);
+            return accounts[0];
+          } else {
+            console.error('Accounts array is empty');
+          }
+        } catch (ethereumRequestError) {
+          console.error('Error with eth_requestAccounts:', ethereumRequestError);
           
-          console.log('Successfully connected to wallet:', accounts[0]);
-          return accounts[0];
-        } else {
-          console.error('No accounts found or user rejected the request');
-          return null;
+          // Try fallback to legacy web3 method
+          try {
+            console.log('Trying fallback to legacy web3 method...');
+            if (window.ethereum.sendAsync || window.ethereum.send) {
+              const sendMethod = window.ethereum.sendAsync || window.ethereum.send;
+              const accountsResult = await new Promise((resolve, reject) => {
+                sendMethod.call(window.ethereum, {
+                  method: 'eth_requestAccounts',
+                  params: [],
+                  jsonrpc: '2.0',
+                  id: new Date().getTime()
+                }, (error, response) => {
+                  if (error) {
+                    reject(error);
+                  } else if (response.error) {
+                    reject(response.error);
+                  } else {
+                    resolve(response.result);
+                  }
+                });
+              });
+              
+              console.log('Accounts from fallback method:', accountsResult);
+              if (accountsResult && accountsResult.length > 0) {
+                setAccount(accountsResult[0]);
+                setIsConnected(true);
+                setProvider(window.ethereum);
+                setWeb3(new Web3(window.ethereum));
+                
+                // Get chain ID
+                try {
+                  const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                  setChainId(chainId);
+                } catch (chainIdError) {
+                  console.warn('Could not get chain ID:', chainIdError);
+                }
+                
+                console.log('Successfully connected to wallet via fallback:', accountsResult[0]);
+                return accountsResult[0];
+              }
+            }
+          } catch (fallbackError) {
+            console.error('Fallback method also failed:', fallbackError);
+          }
+          
+          // If we've gotten here, all methods failed - try one last approach for Trust Wallet and others
+          try {
+            console.log('Trying direct web3 connection...');
+            // Create a fresh web3 instance directly
+            const directWeb3 = new Web3(window.ethereum);
+            const accounts = await directWeb3.eth.getAccounts();
+            console.log('Accounts from direct web3 call:', accounts);
+            
+            if (accounts && accounts.length > 0) {
+              setAccount(accounts[0]);
+              setIsConnected(true);
+              setProvider(window.ethereum);
+              setWeb3(directWeb3);
+              
+              // Don't worry about chainId for this fallback
+              console.log('Successfully connected to wallet via direct web3:', accounts[0]);
+              return accounts[0];
+            }
+          } catch (directWeb3Error) {
+            console.error('Direct web3 connection failed:', directWeb3Error);
+          }
         }
-      } catch (requestError) {
-        console.error('Error requesting accounts:', requestError);
-        
-        // If the user rejected the request, don't show an error
-        if (requestError.code === 4001) {
-          console.log('User rejected the connection request');
-          return null;
+      } 
+      // Legacy web3 support for older wallets
+      else if (window.web3 && window.web3.currentProvider) {
+        try {
+          console.log('Using legacy web3 provider...');
+          const legacyWeb3 = new Web3(window.web3.currentProvider);
+          const accounts = await legacyWeb3.eth.getAccounts();
+          
+          if (accounts && accounts.length > 0) {
+            setAccount(accounts[0]);
+            setIsConnected(true);
+            setProvider(window.web3.currentProvider);
+            setWeb3(legacyWeb3);
+            
+            // Chain ID is harder to get with legacy providers, so we'll skip it
+            console.log('Successfully connected to wallet via legacy web3:', accounts[0]);
+            return accounts[0];
+          }
+        } catch (legacyError) {
+          console.error('Legacy web3 connection failed:', legacyError);
         }
-        
-        // For other errors
-        alert('Error connecting to wallet: ' + (requestError.message || 'Unknown error'));
-        return null;
       }
+      
+      // If we get here, all methods failed
+      alert('Could not connect to wallet. Please ensure your wallet is unlocked and try again.');
+      return null;
+      
     } catch (error) {
       console.error('Unexpected error in connectWallet:', error);
       alert('Unexpected error connecting to wallet. Please try again or reload the page.');
