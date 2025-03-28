@@ -19,7 +19,8 @@ export const ProviderContextProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-
+  
+  // Auto-check connection on load
   useEffect(() => {
     // Check if already connected on component mount
     const checkConnection = async () => {
@@ -34,6 +35,14 @@ export const ProviderContextProvider = ({ children }) => {
             setAccount(accounts[0]);
             setChainId(chainId);
             setIsConnected(true);
+            
+            // Update connected wallet address in any elements with class 'wallet-address'
+            const walletAddressElements = document.querySelectorAll('.wallet-address');
+            if (walletAddressElements.length > 0) {
+              walletAddressElements.forEach(el => {
+                el.textContent = accounts[0];
+              });
+            }
           }
         } catch (error) {
           console.error("Failed to check existing connection:", error);
@@ -67,6 +76,14 @@ export const ProviderContextProvider = ({ children }) => {
     } else {
       // User switched accounts
       setAccount(accounts[0]);
+      
+      // Update connected wallet address in any elements with class 'wallet-address'
+      const walletAddressElements = document.querySelectorAll('.wallet-address');
+      if (walletAddressElements.length > 0) {
+        walletAddressElements.forEach(el => {
+          el.textContent = accounts[0];
+        });
+      }
     }
   };
 
@@ -107,6 +124,14 @@ export const ProviderContextProvider = ({ children }) => {
         setChainId(chainId);
         setIsConnected(true);
         
+        // Update connected wallet address in any elements with class 'wallet-address'
+        const walletAddressElements = document.querySelectorAll('.wallet-address');
+        if (walletAddressElements.length > 0) {
+          walletAddressElements.forEach(el => {
+            el.textContent = accounts[0];
+          });
+        }
+        
         return accounts[0];
       }
     } catch (error) {
@@ -120,6 +145,14 @@ export const ProviderContextProvider = ({ children }) => {
     setAccount(null);
     setChainId(null);
     setIsConnected(false);
+    
+    // Clear connected wallet address in any elements with class 'wallet-address'
+    const walletAddressElements = document.querySelectorAll('.wallet-address');
+    if (walletAddressElements.length > 0) {
+      walletAddressElements.forEach(el => {
+        el.textContent = '';
+      });
+    }
   };
 
   return (

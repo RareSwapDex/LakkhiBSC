@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Form, Button, Alert } from 'react-bootstrap';
 import { useProvider } from '../web3/ProviderContext';
+import Web3 from 'web3';
 
 /**
  * TokenSelector component for selecting tokens from a list of popular options or entering a custom address
@@ -17,12 +18,14 @@ const TokenSelector = ({ onTokenSelect }) => {
   const [error, setError] = useState('');
   const { web3, isConnected, chainId } = useProvider();
 
+  // Hardcoded RPC endpoints for fallback validation
+  const RPC_ENDPOINTS = {
+    ETH: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+    BSC: 'https://bsc-dataseed.binance.org/',
+    BSC_TESTNET: 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+  };
+
   const validateToken = async () => {
-    if (!isConnected || !web3) {
-      setError('Please connect your wallet first');
-      return;
-    }
-    
     if (!tokenAddress) {
       setError('Please enter a token address');
       return;
@@ -32,46 +35,102 @@ const TokenSelector = ({ onTokenSelect }) => {
     setError('');
     setTokenInfo(null);
 
-    try {
-      // Simple ERC20 ABI (just the functions we need)
-      const minABI = [
-        { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
-        { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
-        { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
-      ];
-
-      // Create token contract instance
-      const tokenContract = new web3.eth.Contract(minABI, tokenAddress);
-      
-      // Call contract methods
-      const [name, symbol, decimals] = await Promise.all([
-        tokenContract.methods.name().call(),
-        tokenContract.methods.symbol().call(),
-        tokenContract.methods.decimals().call()
-      ]);
-
-      // Create result object with current chain
-      const tokenData = {
-        address: tokenAddress,
-        name,
-        symbol,
-        decimals: parseInt(decimals),
-        chainId
-      };
-
-      // Set local state
-      setTokenInfo(tokenData);
-      
-      // Pass to parent component
-      if (onTokenSelect) {
-        onTokenSelect(tokenAddress, tokenData);
+    // First try with connected wallet if available
+    if (isConnected && web3) {
+      try {
+        const result = await validateWithWeb3(web3, tokenAddress, chainId);
+        if (result) {
+          setTokenInfo(result);
+          onTokenSelect(tokenAddress, result);
+          setValidating(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Error validating with connected wallet:', err);
+        // Continue to fallback methods
       }
-    } catch (err) {
-      console.error('Error validating token:', err);
+    }
+
+    // Fallback: Try with public RPC endpoints
+    try {
+      // Try Ethereum
+      const ethWeb3 = new Web3(RPC_ENDPOINTS.ETH);
+      try {
+        const result = await validateWithWeb3(ethWeb3, tokenAddress, '0x1');
+        if (result) {
+          setTokenInfo(result);
+          onTokenSelect(tokenAddress, result);
+          setValidating(false);
+          return;
+        }
+      } catch (ethErr) {
+        console.error('Error validating with ETH:', ethErr);
+      }
+
+      // Try BSC
+      const bscWeb3 = new Web3(RPC_ENDPOINTS.BSC);
+      try {
+        const result = await validateWithWeb3(bscWeb3, tokenAddress, '0x38');
+        if (result) {
+          setTokenInfo(result);
+          onTokenSelect(tokenAddress, result);
+          setValidating(false);
+          return;
+        }
+      } catch (bscErr) {
+        console.error('Error validating with BSC:', bscErr);
+      }
+
+      // Try BSC Testnet
+      const bscTestWeb3 = new Web3(RPC_ENDPOINTS.BSC_TESTNET);
+      try {
+        const result = await validateWithWeb3(bscTestWeb3, tokenAddress, '0x61');
+        if (result) {
+          setTokenInfo(result);
+          onTokenSelect(tokenAddress, result);
+          setValidating(false);
+          return;
+        }
+      } catch (bscTestErr) {
+        console.error('Error validating with BSC Testnet:', bscTestErr);
+      }
+
+      // If all validation attempts failed
       setError('Invalid token contract or address. Please check the address and try again.');
+    } catch (err) {
+      console.error('Error in validation fallbacks:', err);
+      setError('Could not validate token. Please check the address and try again.');
     } finally {
       setValidating(false);
     }
+  };
+
+  const validateWithWeb3 = async (web3Instance, address, networkChainId) => {
+    // Simple ERC20 ABI (just the functions we need)
+    const minABI = [
+      { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
+      { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
+      { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
+    ];
+
+    // Create token contract instance
+    const tokenContract = new web3Instance.eth.Contract(minABI, address);
+    
+    // Call contract methods
+    const [name, symbol, decimals] = await Promise.all([
+      tokenContract.methods.name().call(),
+      tokenContract.methods.symbol().call(),
+      tokenContract.methods.decimals().call()
+    ]);
+
+    // Create result object with network chain
+    return {
+      address: address,
+      name,
+      symbol,
+      decimals: parseInt(decimals),
+      chainId: networkChainId
+    };
   };
 
   return (
@@ -89,7 +148,7 @@ const TokenSelector = ({ onTokenSelect }) => {
         <Button 
           variant="primary"
           onClick={validateToken}
-          disabled={validating || !isConnected}
+          disabled={validating}
         >
           {validating ? 'Validating...' : 'Validate Token'}
         </Button>
@@ -109,12 +168,6 @@ const TokenSelector = ({ onTokenSelect }) => {
             <strong>Symbol:</strong> {tokenInfo.symbol}<br />
             <strong>Decimals:</strong> {tokenInfo.decimals}
           </p>
-        </Alert>
-      )}
-
-      {!isConnected && (
-        <Alert variant="warning" className="mt-2">
-          Please connect your wallet to validate tokens.
         </Alert>
       )}
     </Form.Group>
