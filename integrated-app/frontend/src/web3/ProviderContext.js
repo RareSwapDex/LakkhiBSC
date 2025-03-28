@@ -22,97 +22,91 @@ export const ProviderContextProvider = ({ children }) => {
   const [chainId, setChainId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      if (window.ethereum) {
+  const connectWallet = async () => {
+    if (!window.ethereum) {
+      alert('Please install MetaMask!');
+      return;
+    }
+
+    try {
+      // Request account access
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      if (accounts.length > 0) {
+        // Get the chain ID
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        
+        // Set up Web3
         const web3Instance = new Web3(window.ethereum);
+        
+        // Update state
         setWeb3(web3Instance);
         setProvider(window.ethereum);
-
-        try {
-          // Get initial accounts
-          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-          if (accounts.length > 0) {
-            setAccount(accounts[0]);
-            setIsConnected(true);
-          }
-
-          // Get initial chain
-          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-          setChainId(chainId);
-
-          // Setup event listeners
-          window.ethereum.on('accountsChanged', handleAccountsChanged);
-          window.ethereum.on('chainChanged', handleChainChanged);
-          window.ethereum.on('connect', handleConnect);
-          window.ethereum.on('disconnect', handleDisconnect);
-        } catch (error) {
-          console.error('Error initializing web3:', error);
-        }
+        setAccount(accounts[0]);
+        setChainId(chainId);
+        setIsConnected(true);
+        
+        // Set up event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+        window.ethereum.on('disconnect', handleDisconnect);
+        
+        return accounts[0];
       }
-    };
-
-    init();
-
-    return () => {
-      if (window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
-        window.ethereum.removeListener('connect', handleConnect);
-        window.ethereum.removeListener('disconnect', handleDisconnect);
+    } catch (error) {
+      console.error('Error connecting to wallet:', error);
+      if (error.code === 4001) {
+        // User rejected request
+        alert('Please connect your wallet to continue.');
+      } else {
+        alert('Error connecting to wallet. Please try again.');
       }
-    };
-  }, []);
+    }
+  };
+
+  const disconnectWallet = () => {
+    if (window.ethereum) {
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
+      window.ethereum.removeListener('disconnect', handleDisconnect);
+    }
+    setWeb3(null);
+    setProvider(null);
+    setAccount(null);
+    setChainId(null);
+    setIsConnected(false);
+  };
 
   const handleAccountsChanged = (accounts) => {
     if (accounts.length === 0) {
-      setAccount(null);
-      setIsConnected(false);
+      // User disconnected their wallet
+      disconnectWallet();
     } else {
+      // User switched accounts
       setAccount(accounts[0]);
-      setIsConnected(true);
     }
   };
 
   const handleChainChanged = (chainId) => {
     setChainId(chainId);
-  };
-
-  const handleConnect = () => {
-    setIsConnected(true);
+    // Reload the page as recommended by MetaMask
+    window.location.reload();
   };
 
   const handleDisconnect = () => {
-    setIsConnected(false);
-    setAccount(null);
+    disconnectWallet();
   };
 
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      alert('Please install MetaMask or another Web3 wallet');
-      return null;
-    }
-
-    try {
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      });
-
-      if (accounts[0]) {
-        setAccount(accounts[0]);
-        setIsConnected(true);
-        return accounts[0];
+  // Clean up event listeners when component unmounts
+  useEffect(() => {
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+        window.ethereum.removeListener('disconnect', handleDisconnect);
       }
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      return null;
-    }
-  };
-
-  const disconnectWallet = () => {
-    setAccount(null);
-    setIsConnected(false);
-  };
+    };
+  }, []);
 
   return (
     <ProviderContext.Provider

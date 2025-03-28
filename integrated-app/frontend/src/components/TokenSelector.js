@@ -15,9 +15,14 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
   const [tokenInfo, setTokenInfo] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { web3 } = useProvider();
+  const { web3, isConnected, account } = useProvider();
 
   const validateToken = async () => {
+    if (!isConnected || !account) {
+      setError('Please connect your wallet first');
+      return;
+    }
+
     if (!tokenAddress) {
       setError('Please enter a token address');
       return;
@@ -118,7 +123,7 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
         <Button 
           variant="primary"
           onClick={validateToken}
-          disabled={isLoading}
+          disabled={isLoading || !isConnected}
         >
           {isLoading ? 'Validating...' : 'Validate Token'}
         </Button>
@@ -139,6 +144,12 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
             <strong>Decimals:</strong> {tokenInfo.decimals}<br />
             <strong>Network:</strong> {tokenInfo.network}
           </p>
+        </Alert>
+      )}
+
+      {!isConnected && (
+        <Alert variant="warning" className="mt-2">
+          Please connect your wallet to validate tokens.
         </Alert>
       )}
     </Form.Group>
