@@ -20,46 +20,40 @@ export const ProviderContextProvider = ({ children }) => {
   const [chainId, setChainId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   
-  // Auto-check connection on load
+  // Auto-check for existing connections when the component mounts
   useEffect(() => {
-    // Check if already connected on component mount
-    const checkConnection = async () => {
+    const checkExistingConnection = async () => {
       if (window.ethereum) {
         try {
+          // Check if already connected
           const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          
           if (accounts && accounts.length > 0) {
+            // Get the chain ID
             const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            
+            // Set up web3
             const web3Instance = new Web3(window.ethereum);
             
+            // Update state
             setWeb3(web3Instance);
             setAccount(accounts[0]);
             setChainId(chainId);
             setIsConnected(true);
             
-            // Update connected wallet address in any elements with class 'wallet-address'
-            const walletAddressElements = document.querySelectorAll('.wallet-address');
-            if (walletAddressElements.length > 0) {
-              walletAddressElements.forEach(el => {
-                el.textContent = accounts[0];
-              });
-            }
+            // Set up event listeners
+            window.ethereum.on('accountsChanged', handleAccountsChanged);
+            window.ethereum.on('chainChanged', handleChainChanged);
+            window.ethereum.on('disconnect', handleDisconnect);
           }
         } catch (error) {
-          console.error("Failed to check existing connection:", error);
+          console.error('Error checking existing connection:', error);
         }
       }
     };
     
-    checkConnection();
+    checkExistingConnection();
     
-    // Set up event listeners
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
-      window.ethereum.on('disconnect', handleDisconnect);
-    }
-    
-    // Cleanup listeners on unmount
     return () => {
       if (window.ethereum) {
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
@@ -76,25 +70,11 @@ export const ProviderContextProvider = ({ children }) => {
     } else {
       // User switched accounts
       setAccount(accounts[0]);
-      
-      // Update connected wallet address in any elements with class 'wallet-address'
-      const walletAddressElements = document.querySelectorAll('.wallet-address');
-      if (walletAddressElements.length > 0) {
-        walletAddressElements.forEach(el => {
-          el.textContent = accounts[0];
-        });
-      }
     }
   };
 
   const handleChainChanged = (newChainId) => {
     setChainId(newChainId);
-    
-    // Refresh web3 instance to avoid issues
-    if (window.ethereum) {
-      const web3Instance = new Web3(window.ethereum);
-      setWeb3(web3Instance);
-    }
   };
 
   const handleDisconnect = () => {
@@ -103,12 +83,12 @@ export const ProviderContextProvider = ({ children }) => {
 
   const connectWallet = async () => {
     if (!window.ethereum) {
-      console.error("No Ethereum wallet detected");
+      console.error('No Ethereum provider detected');
       return null;
     }
 
     try {
-      // Request accounts access
+      // Request account access - this will prompt MetaMask
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       
       if (accounts && accounts.length > 0) {
@@ -118,41 +98,38 @@ export const ProviderContextProvider = ({ children }) => {
         // Create web3 instance
         const web3Instance = new Web3(window.ethereum);
         
+        // Set up event listeners
+        window.ethereum.on('accountsChanged', handleAccountsChanged);
+        window.ethereum.on('chainChanged', handleChainChanged);
+        window.ethereum.on('disconnect', handleDisconnect);
+        
         // Update state
         setWeb3(web3Instance);
         setAccount(accounts[0]);
         setChainId(chainId);
         setIsConnected(true);
         
-        // Update connected wallet address in any elements with class 'wallet-address'
-        const walletAddressElements = document.querySelectorAll('.wallet-address');
-        if (walletAddressElements.length > 0) {
-          walletAddressElements.forEach(el => {
-            el.textContent = accounts[0];
-          });
-        }
-        
         return accounts[0];
       }
     } catch (error) {
-      console.error("Error connecting wallet:", error);
+      console.error('Error connecting wallet:', error);
       return null;
     }
   };
 
   const disconnectWallet = () => {
+    // Remove event listeners
+    if (window.ethereum) {
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
+      window.ethereum.removeListener('disconnect', handleDisconnect);
+    }
+    
+    // Reset state
     setWeb3(null);
     setAccount(null);
     setChainId(null);
     setIsConnected(false);
-    
-    // Clear connected wallet address in any elements with class 'wallet-address'
-    const walletAddressElements = document.querySelectorAll('.wallet-address');
-    if (walletAddressElements.length > 0) {
-      walletAddressElements.forEach(el => {
-        el.textContent = '';
-      });
-    }
   };
 
   return (
