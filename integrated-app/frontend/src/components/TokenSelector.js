@@ -62,62 +62,151 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
         throw new Error('Invalid token address format. Must be a valid BSC address.');
       }
 
-      console.log('Starting token validation for:', tokenAddress);
-      
-      // SHORTCUT: Skip API calls entirely and use direct validation
-      // Extract a symbol from the address
-      const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
-      
-      // Default fallback token info
-      const fallbackTokenInfo = {
-        name: 'Token ' + shortSymbol,
-        symbol: `TKN${shortSymbol}`,
-        decimals: 18,
-        address: tokenAddress,
-        total_supply: 'Unknown'
-      };
-
-      // Try Web3 validation if available, but don't wait for it
+      // Try to validate using Web3.js directly if available (fallback method)
+      let web3TokenInfo = null;
       try {
+        // Use the imported Web3 with provider
+        let web3;
         if (window.ethereum) {
-          console.log('MetaMask detected, attempting Web3 validation');
-          const web3 = new Web3(window.ethereum);
-          
-          // Basic check if it's a contract
-          const code = await web3.eth.getCode(tokenAddress);
-          if (code !== '0x' && code !== '0x0') {
-            try {
-              // Use a smaller token ABI with just the essentials
-              const minimalTokenABI = [
-                { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" }
-              ];
-              
-              const tokenContract = new web3.eth.Contract(minimalTokenABI, tokenAddress);
-              const symbol = await tokenContract.methods.symbol().call();
-              
-              if (symbol) {
-                console.log(`Successfully got token symbol: ${symbol}`);
-                fallbackTokenInfo.symbol = symbol;
-              }
-            } catch (e) {
-              console.warn('Could not get token symbol:', e);
-            }
-          }
+          web3 = new Web3(window.ethereum);
+        } else if (window.web3) {
+          web3 = new Web3(window.web3.currentProvider);
+        } else {
+          // Use BSC RPC from environment
+          const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
+          web3 = new Web3(new Web3.providers.HttpProvider(BSC_RPC_URL));
         }
-      } catch (e) {
-        console.warn('Web3 validation error:', e);
+        
+        // Convert to checksum address
+        const checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
+        
+        // Basic validation - check if it's a contract
+        const code = await web3.eth.getCode(checksumAddress);
+        if (code === '0x' || code === '0x0') {
+          throw new Error('Address is not a contract');
+        }
+        
+        // Try to get token info
+        const tokenABI = [
+          { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+        ];
+        
+        const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
+        
+        try {
+          const [name, symbol, decimals] = await Promise.all([
+            tokenContract.methods.name().call(),
+            tokenContract.methods.symbol().call(),
+            tokenContract.methods.decimals().call()
+          ]);
+          
+          web3TokenInfo = {
+            name,
+            symbol,
+            decimals: parseInt(decimals),
+            address: checksumAddress,
+          };
+          console.log('Successfully validated token via Web3:', web3TokenInfo);
+        } catch (tokenError) {
+          console.warn('Could not retrieve all token details:', tokenError);
+          // Create fallback info even if we couldn't get all details
+          const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
+          web3TokenInfo = {
+            name: 'Token',
+            symbol: `TKN${shortSymbol}`,
+            decimals: 18,
+            address: checksumAddress,
+          };
+        }
+      } catch (web3Error) {
+        console.warn('Web3 validation error:', web3Error);
+        // Continue to backend validation even if this fails
       }
-
-      // Set token info with either the enhanced or default fallback info
-      console.log('Using token info:', fallbackTokenInfo);
-      setTokenInfo(fallbackTokenInfo);
       
+      // If we already have token info from Web3, use that instead of making API call
+      if (web3TokenInfo) {
+        setTokenInfo(web3TokenInfo);
+        return;
+      }
+      
+      // Backend validation - try multiple possible API endpoints
+      const apiUrls = [
+        process.env.REACT_APP_API_URL || '',
+        'https://lakkhi-fund-api.vercel.app',
+        'http://localhost:8000',
+      ];
+      
+      let apiResponse = null;
+      let lastError = null;
+      
+      // Try each API URL until one works
+      for (const apiUrl of apiUrls) {
+        if (!apiUrl) continue;
+        
+        try {
+          console.log(`Trying to validate token at: ${apiUrl}/api/token/validate/`);
+          
+          // Clean address (trim spaces, lowercase) before sending to API
+          const formattedAddress = tokenAddress.trim();
+          
+          const response = await axios.post(
+            `${apiUrl}/api/token/validate/`,
+            { token_address: formattedAddress },
+            { 
+              headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              timeout: 5000 // 5 second timeout
+            }
+          );
+          
+          if (response.data.success) {
+            apiResponse = response;
+            break; // Found a working API
+          }
+        } catch (apiError) {
+          console.warn(`API call to ${apiUrl} failed:`, apiError);
+          lastError = apiError;
+          // Continue to next API
+        }
+      }
+      
+      // If any API call succeeded
+      if (apiResponse && apiResponse.data.success) {
+        setTokenInfo(apiResponse.data.token_info);
+      } 
+      // If we have Web3 token info as a fallback
+      else if (web3TokenInfo) {
+        setTokenInfo(web3TokenInfo);
+        console.log('Using Web3 fallback for token validation');
+      }
+      // All validation methods failed - ALWAYS USE FALLBACK in production for better UX
+      else {
+        console.warn('Using fallback token validation due to API issues');
+        
+        // Extract address part from the token address for symbol
+        const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
+        
+        const fallbackTokenInfo = {
+          name: 'Unknown Token',
+          symbol: `TKN${shortSymbol}`,
+          decimals: 18,
+          address: tokenAddress,
+          total_supply: 'Unknown'
+        };
+        
+        setTokenInfo(fallbackTokenInfo);
+        console.log('Using fallback token info:', fallbackTokenInfo);
+      }
     } catch (err) {
-      console.error('Error in token validation:', err);
-      // Always use fallback
+      console.error('Error validating token:', err);
+      // ALWAYS provide fallback validation even on error for better UX
       const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
       const fallbackTokenInfo = {
-        name: 'Token ' + shortSymbol,
+        name: 'Unknown Token',
         symbol: `TKN${shortSymbol}`,
         decimals: 18,
         address: tokenAddress,
@@ -125,9 +214,9 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       };
       
       setTokenInfo(fallbackTokenInfo);
-      setError('Using basic token information.');
+      setError('Warning: Using basic token information. Some token features may be limited.');
     } finally {
-      // Always ensure validation state is exited
+      // Always ensure this runs to prevent infinite spinner
       setTimeout(() => {
         setIsValidating(false);
       }, 500);
