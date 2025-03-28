@@ -524,11 +524,75 @@ const CreateCampaignPage = () => {
     }
   };
   
+  const handleTokenValidation = (tokenInfo) => {
+    console.log('Token validated:', tokenInfo);
+    setTokenInfo(tokenInfo);
+
+    // If chain information is available, auto-populate the blockchain field
+    if (tokenInfo.chain) {
+      // Map the detected chain to form values
+      let blockchainValue = 'BSC'; // Default
+      
+      // Map detected network to dropdown values
+      if (tokenInfo.chain === 'Ethereum') {
+        blockchainValue = 'Ethereum';
+      } else if (tokenInfo.chain === 'BSC') {
+        blockchainValue = 'BSC';
+      } else if (tokenInfo.chain === 'Polygon') {
+        blockchainValue = 'Polygon';
+      } else if (tokenInfo.chain === 'Avalanche') {
+        blockchainValue = 'Avalanche';
+      }
+      
+      console.log(`Detected token chain: ${tokenInfo.chain}, setting blockchain to: ${blockchainValue}`);
+      
+      // Update the blockchain field
+      setFormData(prev => ({
+        ...prev,
+        basics: {
+          ...prev.basics,
+          blockchainChain: blockchainValue
+        }
+      }));
+    }
+  };
+  
   const deploySmartContract = async () => {
     try {
       if (!account) {
         setError('Wallet not connected. Please connect your wallet first.');
         return null;
+      }
+      
+      // Check that the selected blockchain matches the wallet's network
+      if (window.ethereum) {
+        const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+        let walletNetwork = '';
+        
+        // Map chain IDs to network names
+        if (chainId === '0x1') {
+          walletNetwork = 'Ethereum';
+        } else if (chainId === '0x38') {
+          walletNetwork = 'BSC';
+        } else if (chainId === '0x89') {
+          walletNetwork = 'Polygon';
+        } else if (chainId === '0xa86a') {
+          walletNetwork = 'Avalanche';
+        }
+        
+        // Check if tokenInfo has chain information
+        if (tokenInfo && tokenInfo.chain && tokenInfo.chain !== 'unknown') {
+          if (tokenInfo.chain !== walletNetwork) {
+            setError(`Network mismatch! Your wallet is on ${walletNetwork} but the token is on ${tokenInfo.chain}. Please switch your wallet to ${tokenInfo.chain} network.`);
+            return null;
+          }
+        }
+        
+        // Also check the selected blockchain in the form against wallet network
+        if (formData.basics.blockchainChain !== walletNetwork) {
+          setError(`Network mismatch! Your wallet is on ${walletNetwork} but you selected ${formData.basics.blockchainChain} in the form. Please switch networks or change your selection.`);
+          return null;
+        }
       }
       
       // Inform user about the transaction
@@ -677,8 +741,8 @@ const CreateCampaignPage = () => {
         contract_url: `https://bscscan.com/address/${campaignAddress}`
       };
     } catch (error) {
-      console.error('Error deploying contract:', error);
-      setError(`Error deploying contract: ${error.message || 'Unknown error'}`);
+      console.error('Error in deployment preparation:', error);
+      setError(`Error preparing deployment: ${error.message || 'Unknown error'}`);
       return null;
     }
   };
@@ -840,7 +904,7 @@ const CreateCampaignPage = () => {
               <TokenSelector 
                 value={formData.basics.tokenAddress}
                 onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
-                onValidate={(tokenInfo) => setTokenInfo(tokenInfo)}
+                onValidate={handleTokenValidation}
                 onReset={() => setTokenInfo(null)}
               />
               
@@ -850,6 +914,7 @@ const CreateCampaignPage = () => {
                   value={formData.basics.blockchainChain}
                   onChange={(e) => handleInputChange('basics', 'blockchainChain', e.target.value)}
                   required
+                  disabled={tokenInfo !== null}
                 >
                   {blockchainChains.map(chain => (
                     <option key={chain.id} value={chain.id}>
@@ -857,6 +922,11 @@ const CreateCampaignPage = () => {
                     </option>
                   ))}
                 </Form.Select>
+                {tokenInfo && (
+                  <Form.Text className="text-muted">
+                    Blockchain is auto-selected based on the validated token's network.
+                  </Form.Text>
+                )}
               </Form.Group>
 
               <Form.Group className="mb-3">

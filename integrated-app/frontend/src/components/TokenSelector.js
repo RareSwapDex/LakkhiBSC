@@ -67,6 +67,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
           symbol: `TKN${shortSymbol}`,
           decimals: 18,
           address: tokenAddress,
+          chain: 'unknown',
           total_supply: 'Unknown'
         };
         setTokenInfo(fallbackTokenInfo);
@@ -78,7 +79,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
     try {
       // Frontend validation for proper address format
       if (!tokenAddress.startsWith('0x') || tokenAddress.length !== 42) {
-        throw new Error('Invalid token address format. Must be a valid BSC address.');
+        throw new Error('Invalid token address format. Must be a valid address.');
       }
       
       console.log('Starting Web3 validation');
@@ -89,19 +90,40 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
         try {
           // Use the imported Web3 with provider
           let web3;
+          let networkType = 'unknown';
           
           console.log('Checking for Web3 providers');
           if (window.ethereum) {
             console.log('Using window.ethereum provider');
             web3 = new Web3(window.ethereum);
+            
+            // Detect which network the wallet is connected to
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            console.log('Current chain ID:', chainId);
+            
+            // Map chain IDs to network names
+            if (chainId === '0x1') {
+              networkType = 'Ethereum';
+            } else if (chainId === '0x38') {
+              networkType = 'BSC';
+            } else if (chainId === '0x89') {
+              networkType = 'Polygon';
+            } else if (chainId === '0xa4b1') {
+              networkType = 'Arbitrum';
+            } else if (chainId === '0xa86a') {
+              networkType = 'Avalanche';
+            } else {
+              networkType = `Chain ID ${parseInt(chainId, 16)}`;
+            }
           } else if (window.web3) {
             console.log('Using window.web3 provider');
             web3 = new Web3(window.web3.currentProvider);
           } else {
             console.log('Using RPC URL provider');
-            // Use BSC RPC from environment
+            // Default to BSC RPC for validation when no wallet is connected
             const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
             web3 = new Web3(new Web3.providers.HttpProvider(BSC_RPC_URL));
+            networkType = 'BSC';
           }
           
           try {
@@ -123,6 +145,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
                 symbol: `ADDR${shortSymbol}`,
                 decimals: 18,
                 address: checksumAddress,
+                chain: networkType,
+                chainId: window.ethereum ? await window.ethereum.request({ method: 'eth_chainId' }) : null
               };
             } else {
               // Try to get token info with a simplified approach
@@ -144,6 +168,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
                   symbol: symbol,
                   decimals: 18,
                   address: checksumAddress,
+                  chain: networkType,
+                  chainId: window.ethereum ? await window.ethereum.request({ method: 'eth_chainId' }) : null
                 };
               } catch (symbolError) {
                 console.warn('Could not get symbol:', symbolError);
@@ -155,6 +181,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
                   symbol: `TKN${shortSymbol}`,
                   decimals: 18,
                   address: checksumAddress,
+                  chain: networkType,
+                  chainId: window.ethereum ? await window.ethereum.request({ method: 'eth_chainId' }) : null
                 };
               }
             }
@@ -168,6 +196,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
               symbol: `TKN${shortSymbol}`,
               decimals: 18,
               address: tokenAddress,
+              chain: networkType,
+              chainId: window.ethereum ? await window.ethereum.request({ method: 'eth_chainId' }) : null
             };
           }
         } catch (web3Error) {
@@ -279,6 +309,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
           symbol: `TKN${shortSymbol}`,
           decimals: 18,
           address: tokenAddress,
+          chain: 'unknown',
           total_supply: 'Unknown'
         };
         
@@ -294,6 +325,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
         symbol: `TKN${shortSymbol}`,
         decimals: 18,
         address: tokenAddress,
+        chain: 'unknown',
         total_supply: 'Unknown'
       };
       
@@ -372,7 +404,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
           <p className="mb-0">
             <strong>Name:</strong> {tokenInfo.name}<br />
             <strong>Symbol:</strong> {tokenInfo.symbol}<br />
-            <strong>Decimals:</strong> {tokenInfo.decimals}
+            <strong>Decimals:</strong> {tokenInfo.decimals}<br />
+            {tokenInfo.chain && <><strong>Network:</strong> {tokenInfo.chain}</>}
           </p>
         </Alert>
       )}
