@@ -104,22 +104,33 @@ const CreateCampaignForm = () => {
 
         <Row className="mb-3">
           <Col>
-            <Form.Group>
-              <Form.Label>Blockchain Chain <span className="text-danger">*</span></Form.Label>
-              <input
-                type="text"
-                name="blockchainChain"
-                value={formData.blockchainChain}
-                readOnly
-                disabled
-                placeholder="Chain will be auto-populated when token is validated"
-                className="form-control bg-light"
-                style={{ appearance: 'none' }}
-              />
-              <Form.Text className="text-muted">
+            <div className="mb-3">
+              <label htmlFor="blockchainChain" className="form-label">
+                Blockchain Chain <span className="text-danger">*</span>
+              </label>
+              <div id="blockchainChainWrapper">
+                <input
+                  type="text"
+                  id="blockchainChain"
+                  name="blockchainChain"
+                  value={formData.blockchainChain}
+                  readOnly
+                  disabled
+                  placeholder="Chain will be auto-populated when token is validated"
+                  className="form-control bg-light"
+                  style={{
+                    appearance: 'none',
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none',
+                    background: 'transparent',
+                    backgroundImage: 'none'
+                  }}
+                />
+              </div>
+              <small className="text-muted">
                 This field is automatically determined based on the token's network
-              </Form.Text>
-            </Form.Group>
+              </small>
+            </div>
           </Col>
         </Row>
 

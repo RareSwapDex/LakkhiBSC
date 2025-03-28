@@ -524,37 +524,35 @@ const CreateCampaignPage = () => {
     }
   };
   
-  const handleTokenValidation = (tokenInfo) => {
-    console.log('Token validated:', tokenInfo);
-    setTokenInfo(tokenInfo);
-
-    // If chain information is available, auto-populate the blockchain field
-    if (tokenInfo.chain) {
-      // Map the detected chain to form values
-      let blockchainValue = 'BSC'; // Default
+  const handleTokenValidation = (tokenData) => {
+    // Map chainId to network name
+    let network = '';
+    const chainIdHex = tokenData.chainId.toString().startsWith('0x') 
+      ? tokenData.chainId 
+      : '0x' + Number(tokenData.chainId).toString(16);
       
-      // Map detected network to dropdown values
-      if (tokenInfo.chain === 'Ethereum') {
-        blockchainValue = 'Ethereum';
-      } else if (tokenInfo.chain === 'BSC') {
-        blockchainValue = 'BSC';
-      } else if (tokenInfo.chain === 'Polygon') {
-        blockchainValue = 'Polygon';
-      } else if (tokenInfo.chain === 'Avalanche') {
-        blockchainValue = 'Avalanche';
-      }
-      
-      console.log(`Detected token chain: ${tokenInfo.chain}, setting blockchain to: ${blockchainValue}`);
-      
-      // Update the blockchain field
-      setFormData(prev => ({
-        ...prev,
-        basics: {
-          ...prev.basics,
-          blockchainChain: blockchainValue
-        }
-      }));
+    switch (chainIdHex) {
+      case '0x1':
+        network = 'Ethereum';
+        break;
+      case '0x38':
+        network = 'BSC';
+        break;
+      case '0x61':
+        network = 'BSC Testnet';
+        break;
+      default:
+        network = `Chain ID: ${tokenData.chainId}`;
     }
+
+    setFormData(prev => ({
+      ...prev,
+      token_address: tokenData.address,
+      token_symbol: tokenData.symbol,
+      token_name: tokenData.name,
+      token_decimals: tokenData.decimals,
+      blockchain_chain: network
+    }));
   };
   
   const deploySmartContract = async () => {
@@ -910,23 +908,27 @@ const CreateCampaignPage = () => {
               
               <Form.Group className="mb-3">
                 <Form.Label>Blockchain Chain*</Form.Label>
-                <Form.Select 
-                  value={formData.basics.blockchainChain}
-                  onChange={(e) => handleInputChange('basics', 'blockchainChain', e.target.value)}
-                  required
-                  disabled={tokenInfo !== null}
-                >
-                  {blockchainChains.map(chain => (
-                    <option key={chain.id} value={chain.id}>
-                      {chain.name}
-                    </option>
-                  ))}
-                </Form.Select>
-                {tokenInfo && (
-                  <Form.Text className="text-muted">
-                    Blockchain is auto-selected based on the validated token's network.
-                  </Form.Text>
-                )}
+                <div id="blockchainChainWrapper">
+                  <input
+                    type="text"
+                    name="blockchain_chain"
+                    value={formData.blockchain_chain || ''}
+                    readOnly
+                    disabled
+                    placeholder="Chain will be auto-populated when token is validated"
+                    className="form-control bg-light"
+                    style={{
+                      appearance: 'none',
+                      WebkitAppearance: 'none',
+                      MozAppearance: 'none',
+                      background: 'transparent',
+                      backgroundImage: 'none'
+                    }}
+                  />
+                </div>
+                <Form.Text className="text-muted">
+                  This field is automatically determined based on the token's network
+                </Form.Text>
               </Form.Group>
 
               <Form.Group className="mb-3">
