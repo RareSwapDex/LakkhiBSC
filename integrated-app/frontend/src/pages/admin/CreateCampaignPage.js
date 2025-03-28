@@ -272,33 +272,83 @@ const CreateCampaignPage = () => {
   };
   
   // Token validation function
-  const validateToken = async () => {
-    const tokenAddress = formData.basics.tokenAddress;
-    
-    if (!tokenAddress || !tokenAddress.trim()) {
-      setTokenError("Token address is required");
-      setTokenInfo(null);
+  const handleTokenValidation = async (tokenAddress) => {
+    if (!tokenAddress) {
+      alert('Please enter a token address');
       return;
     }
-    
+
     setValidatingToken(true);
     setTokenError(null);
-    setTokenInfo(null);
-    
+
     try {
-      const response = await axios.post(
-        `${process.env.REACT_APP_BASE_URL}/api/token/validate/`,
-        { token_address: tokenAddress }
-      );
+      // Get connected chain from wallet
+      const walletChainId = chainId || (web3 && await web3.eth.getChainId());
+      console.log('Current wallet chain ID:', walletChainId);
       
-      if (response.data.success) {
-        setTokenInfo(response.data.token_info);
+      // Validate token using TokenSelector component method or direct validation
+      if (window.ethereum) {
+        // Web3 validation
+        const web3 = new Web3(window.ethereum);
+        const tokenContract = new web3.eth.Contract([
+          { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+        ], tokenAddress);
+
+        const [name, symbol, decimals] = await Promise.all([
+          tokenContract.methods.name().call(),
+          tokenContract.methods.symbol().call(),
+          tokenContract.methods.decimals().call()
+        ]);
+
+        // Get token chain ID (same as wallet chain ID for direct validation)
+        const tokenChainId = walletChainId;
+        
+        // Map chainId to network name
+        let network = '';
+        switch (tokenChainId.toString()) {
+          case '1':
+          case '0x1':
+            network = 'Ethereum';
+            break;
+          case '56':
+          case '0x38':
+            network = 'BSC';
+            break;
+          case '97':
+          case '0x61':
+            network = 'BSC Testnet';
+            break;
+          default:
+            network = `Chain ID: ${tokenChainId}`;
+        }
+
+        const tokenInfo = {
+          address: tokenAddress,
+          name,
+          symbol,
+          decimals: parseInt(decimals),
+          chainId: tokenChainId,
+          network
+        };
+
+        setTokenInfo(tokenInfo);
+        
+        // Auto-populate blockchain field
+        setFormData(prev => ({
+          ...prev,
+          blockchain_chain: network
+        }));
+
+        console.log('Token validated on chain:', network);
       } else {
-        setTokenError(response.data.message || "Invalid token address");
+        throw new Error('No Web3 wallet available for validation');
       }
-    } catch (err) {
-      console.error("Error validating token:", err);
-      setTokenError(err.response?.data?.message || "Failed to validate token");
+
+    } catch (error) {
+      console.error('Token validation error:', error);
+      setTokenError(error.message || 'Failed to validate token');
     } finally {
       setValidatingToken(false);
     }
@@ -307,7 +357,7 @@ const CreateCampaignPage = () => {
   // Handle token address blur
   const handleTokenBlur = () => {
     if (formData.basics.tokenAddress) {
-      validateToken();
+      handleTokenValidation(formData.basics.tokenAddress);
     }
   };
   
@@ -522,37 +572,6 @@ const CreateCampaignPage = () => {
       setError(`Error creating campaign: ${error.message || 'Unknown error'}`);
       setSubmitting(false);
     }
-  };
-  
-  const handleTokenValidation = (tokenData) => {
-    // Map chainId to network name
-    let network = '';
-    const chainIdHex = tokenData.chainId.toString().startsWith('0x') 
-      ? tokenData.chainId 
-      : '0x' + Number(tokenData.chainId).toString(16);
-      
-    switch (chainIdHex) {
-      case '0x1':
-        network = 'Ethereum';
-        break;
-      case '0x38':
-        network = 'BSC';
-        break;
-      case '0x61':
-        network = 'BSC Testnet';
-        break;
-      default:
-        network = `Chain ID: ${tokenData.chainId}`;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      token_address: tokenData.address,
-      token_symbol: tokenData.symbol,
-      token_name: tokenData.name,
-      token_decimals: tokenData.decimals,
-      blockchain_chain: network
-    }));
   };
   
   const deploySmartContract = async () => {
@@ -906,30 +925,27 @@ const CreateCampaignPage = () => {
                 onReset={() => setTokenInfo(null)}
               />
               
-              <Form.Group className="mb-3">
-                <Form.Label>Blockchain Chain*</Form.Label>
-                <div id="blockchainChainWrapper">
-                  <input
-                    type="text"
-                    name="blockchain_chain"
-                    value={formData.blockchain_chain || ''}
-                    readOnly
-                    disabled
-                    placeholder="Chain will be auto-populated when token is validated"
-                    className="form-control bg-light"
-                    style={{
-                      appearance: 'none',
-                      WebkitAppearance: 'none',
-                      MozAppearance: 'none',
-                      background: 'transparent',
-                      backgroundImage: 'none'
-                    }}
-                  />
-                </div>
-                <Form.Text className="text-muted">
-                  This field is automatically determined based on the token's network
-                </Form.Text>
-              </Form.Group>
+              <div className="form-group">
+                <label htmlFor="blockchain_chain">Blockchain Chain*</label>
+                <input 
+                  type="text"
+                  id="blockchain_chain"
+                  name="blockchain_chain"
+                  className="form-control bg-light" 
+                  value={formData.blockchain_chain || ''}
+                  placeholder="Chain will be populated after token validation"
+                  disabled
+                  readOnly
+                  style={{
+                    appearance: 'none',
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none'
+                  }}
+                />
+                <small className="form-text text-muted">
+                  This field is auto-populated based on the token's network
+                </small>
+              </div>
 
               <Form.Group className="mb-3">
                 <Form.Label>Brief Description*</Form.Label>
