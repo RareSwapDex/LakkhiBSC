@@ -935,14 +935,14 @@ const CreateCampaignPage = () => {
                 onReset={() => setTokenInfo(null)}
               />
               
-              <div className="form-group">
+              <div className="form-group mb-3">
                 <label htmlFor="blockchain_chain">Blockchain Chain*</label>
                 <input 
                   type="text"
                   id="blockchain_chain"
                   name="blockchain_chain"
                   className="form-control bg-light" 
-                  value={formData.blockchain_chain || ''}
+                  value={formData.blockchain_chain || formData.basics.blockchainChain}
                   placeholder="Chain will be populated after token validation"
                   disabled
                   readOnly
@@ -953,7 +953,7 @@ const CreateCampaignPage = () => {
                   }}
                 />
                 <small className="form-text text-muted">
-                  This field is auto-populated based on the token's network
+                  This field is populated based on the token's network
                 </small>
               </div>
 
