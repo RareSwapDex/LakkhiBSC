@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { Container, Form, Button, Card, Row, Col, Alert, Spinner, Tabs, Tab, ListGroup, InputGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import Web3 from 'web3';
 import { ProviderContext } from '../../web3/ProviderContext';
 import TokenSelector from '../../components/TokenSelector';
 
@@ -622,7 +623,6 @@ const CreateCampaignPage = () => {
       }
       
       // Initialize Web3 directly with window.ethereum
-      const Web3 = require('web3');
       const web3 = new Web3(window.ethereum);
       
       // Updated Campaign factory ABI with new parameters
@@ -797,6 +797,16 @@ const CreateCampaignPage = () => {
     { id: 'social', name: 'Social' },
     { id: 'other', name: 'Other' }
   ];
+  
+  // Update validateToken function
+  const validateToken = async () => {
+    const tokenAddress = formData.basics.tokenAddress;
+    if (tokenAddress) {
+      handleTokenValidation(tokenAddress);
+    } else {
+      setTokenError("Token address is required");
+    }
+  };
   
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
