@@ -15,14 +15,9 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
   const [tokenInfo, setTokenInfo] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { web3, isConnected, account } = useProvider();
+  const { web3 } = useProvider();
 
   const validateToken = async () => {
-    if (!isConnected || !account) {
-      setError('Please connect your wallet first');
-      return;
-    }
-
     if (!tokenAddress) {
       setError('Please enter a token address');
       return;
@@ -33,7 +28,6 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
     setTokenInfo(null);
 
     try {
-      // First try to validate the token contract exists
       const tokenContract = new web3.eth.Contract([
         {
           "constant": true,
@@ -58,18 +52,15 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
         }
       ], tokenAddress);
 
-      // Get token details
       const [symbol, name, decimals] = await Promise.all([
         tokenContract.methods.symbol().call(),
         tokenContract.methods.name().call(),
         tokenContract.methods.decimals().call()
       ]);
 
-      // Get chain information
       const chainId = await web3.eth.getChainId();
       let network = 'Unknown';
       
-      // Map chain IDs to network names
       switch (chainId.toString()) {
         case '1':
           network = 'Ethereum Mainnet';
@@ -96,7 +87,6 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
       setTokenInfo(tokenData);
       onTokenSelect(tokenAddress, tokenData);
       
-      // Update the blockchain chain field
       if (onChainSelect) {
         onChainSelect(network);
       }
@@ -123,7 +113,7 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
         <Button 
           variant="primary"
           onClick={validateToken}
-          disabled={isLoading || !isConnected}
+          disabled={isLoading}
         >
           {isLoading ? 'Validating...' : 'Validate Token'}
         </Button>
@@ -144,12 +134,6 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
             <strong>Decimals:</strong> {tokenInfo.decimals}<br />
             <strong>Network:</strong> {tokenInfo.network}
           </p>
-        </Alert>
-      )}
-
-      {!isConnected && (
-        <Alert variant="warning" className="mt-2">
-          Please connect your wallet to validate tokens.
         </Alert>
       )}
     </Form.Group>
