@@ -169,42 +169,59 @@ export const ProviderContextProvider = ({ children }) => {
   const connectWallet = async () => {
     console.log('Connecting wallet...', { provider, window_ethereum: window.ethereum });
     
-    // Try to use window.ethereum directly if provider is not set
-    const providerToUse = provider || window.ethereum;
-    
-    if (!providerToUse) {
-      console.error('No provider available. Please install MetaMask!');
-      alert('MetaMask is not installed. Please install MetaMask to connect your wallet.');
-      return;
-    }
-    
     try {
-      console.log('Requesting accounts...');
-      const accounts = await providerToUse.request({ method: 'eth_requestAccounts' });
-      console.log('Accounts received:', accounts);
+      // First check if window.ethereum exists
+      if (!window.ethereum) {
+        console.error('MetaMask not installed!');
+        alert('MetaMask is not installed. Please install MetaMask to connect your wallet.');
+        return null;
+      }
       
-      if (accounts && accounts.length > 0) {
-        setAccount(accounts[0]);
-        setIsConnected(true);
+      // Always use window.ethereum directly for connection requests
+      // This is more reliable than using the cached provider
+      console.log('Requesting accounts directly from window.ethereum');
+      
+      try {
+        // Request accounts - this will prompt the user to connect if not already connected
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        console.log('Accounts received:', accounts);
         
-        // If we used window.ethereum but provider wasn't set, update it
-        if (!provider && window.ethereum) {
+        if (accounts && accounts.length > 0) {
+          // Set the account and connection state
+          setAccount(accounts[0]);
+          setIsConnected(true);
+          
+          // Make sure provider and web3 are set
           setProvider(window.ethereum);
           setWeb3(new Web3(window.ethereum));
+          
+          // Get chain ID
+          const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+          setChainId(chainId);
+          
+          console.log('Successfully connected to wallet:', accounts[0]);
+          return accounts[0];
+        } else {
+          console.error('No accounts found or user rejected the request');
+          return null;
+        }
+      } catch (requestError) {
+        console.error('Error requesting accounts:', requestError);
+        
+        // If the user rejected the request, don't show an error
+        if (requestError.code === 4001) {
+          console.log('User rejected the connection request');
+          return null;
         }
         
-        // Get chainId
-        const chainId = await providerToUse.request({ method: 'eth_chainId' });
-        setChainId(chainId);
-        
-        return accounts[0];
-      } else {
-        console.error('No accounts found or user rejected the request');
-        throw new Error('No accounts found or user rejected the request');
+        // For other errors
+        alert('Error connecting to wallet: ' + (requestError.message || 'Unknown error'));
+        return null;
       }
     } catch (error) {
-      console.error('Error connecting wallet:', error);
-      throw error;
+      console.error('Unexpected error in connectWallet:', error);
+      alert('Unexpected error connecting to wallet. Please try again or reload the page.');
+      return null;
     }
   };
 
