@@ -12,74 +12,65 @@ import { useProvider } from '../web3/ProviderContext';
  */
 const TokenSelector = ({ onTokenSelect }) => {
   const [tokenAddress, setTokenAddress] = useState('');
+  const [validating, setValidating] = useState(false);
   const [tokenInfo, setTokenInfo] = useState(null);
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const { web3, isConnected, chainId } = useProvider();
 
   const validateToken = async () => {
-    if (!isConnected) {
+    if (!isConnected || !web3) {
       setError('Please connect your wallet first');
       return;
     }
-
+    
     if (!tokenAddress) {
       setError('Please enter a token address');
       return;
     }
 
-    setIsLoading(true);
+    setValidating(true);
     setError('');
     setTokenInfo(null);
 
     try {
-      // First try to validate the token contract exists
-      const tokenContract = new web3.eth.Contract([
-        {
-          "constant": true,
-          "inputs": [],
-          "name": "symbol",
-          "outputs": [{ "name": "", "type": "string" }],
-          "type": "function"
-        },
-        {
-          "constant": true,
-          "inputs": [],
-          "name": "name",
-          "outputs": [{ "name": "", "type": "string" }],
-          "type": "function"
-        },
-        {
-          "constant": true,
-          "inputs": [],
-          "name": "decimals",
-          "outputs": [{ "name": "", "type": "uint8" }],
-          "type": "function"
-        }
-      ], tokenAddress);
+      // Simple ERC20 ABI (just the functions we need)
+      const minABI = [
+        { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
+      ];
 
-      // Get token details
-      const [symbol, name, decimals] = await Promise.all([
-        tokenContract.methods.symbol().call(),
+      // Create token contract instance
+      const tokenContract = new web3.eth.Contract(minABI, tokenAddress);
+      
+      // Call contract methods
+      const [name, symbol, decimals] = await Promise.all([
         tokenContract.methods.name().call(),
+        tokenContract.methods.symbol().call(),
         tokenContract.methods.decimals().call()
       ]);
 
+      // Create result object with current chain
       const tokenData = {
         address: tokenAddress,
-        symbol,
         name,
+        symbol,
         decimals: parseInt(decimals),
         chainId
       };
 
+      // Set local state
       setTokenInfo(tokenData);
-      onTokenSelect(tokenAddress, tokenData);
-    } catch (error) {
-      console.error('Error validating token:', error);
-      setError('Invalid token address or contract. Please verify the address and try again.');
+      
+      // Pass to parent component
+      if (onTokenSelect) {
+        onTokenSelect(tokenAddress, tokenData);
+      }
+    } catch (err) {
+      console.error('Error validating token:', err);
+      setError('Invalid token contract or address. Please check the address and try again.');
     } finally {
-      setIsLoading(false);
+      setValidating(false);
     }
   };
 
@@ -92,15 +83,15 @@ const TokenSelector = ({ onTokenSelect }) => {
           value={tokenAddress}
           onChange={(e) => setTokenAddress(e.target.value)}
           placeholder="Enter token contract address (0x...)"
-          style={{ minWidth: '400px' }}
+          style={{ width: '100%', minWidth: '400px' }}
           className={error ? 'is-invalid' : ''}
         />
         <Button 
           variant="primary"
           onClick={validateToken}
-          disabled={isLoading || !isConnected}
+          disabled={validating || !isConnected}
         >
-          {isLoading ? 'Validating...' : 'Validate Token'}
+          {validating ? 'Validating...' : 'Validate Token'}
         </Button>
       </div>
 
@@ -112,7 +103,7 @@ const TokenSelector = ({ onTokenSelect }) => {
 
       {tokenInfo && (
         <Alert variant="success" className="mt-2">
-          <h6>Token Information</h6>
+          <h6>Token Validated Successfully</h6>
           <p className="mb-0">
             <strong>Name:</strong> {tokenInfo.name}<br />
             <strong>Symbol:</strong> {tokenInfo.symbol}<br />
