@@ -75,9 +75,22 @@ export const ProviderContextProvider = ({ children }) => {
   // Initialize provider on component mount
   useEffect(() => {
     const initProvider = async () => {
-      const detectedProvider = await detectEthereumProvider();
+      console.log('Initializing Web3 provider...');
+      // Use window.ethereum directly first as a faster check
+      let detectedProvider = window.ethereum;
+      
+      // If not found directly, use detectEthereumProvider as fallback
+      if (!detectedProvider) {
+        console.log('window.ethereum not found directly, using detectEthereumProvider...');
+        try {
+          detectedProvider = await detectEthereumProvider({ mustBeMetaMask: false });
+        } catch (error) {
+          console.error('Error detecting provider:', error);
+        }
+      }
       
       if (detectedProvider) {
+        console.log('Provider detected:', detectedProvider);
         // Set up event listeners for MetaMask
         detectedProvider.on('accountsChanged', handleAccountsChanged);
         detectedProvider.on('chainChanged', handleChainChanged);
@@ -92,7 +105,8 @@ export const ProviderContextProvider = ({ children }) => {
         // Check if already connected
         try {
           const accounts = await detectedProvider.request({ method: 'eth_accounts' });
-          if (accounts.length > 0) {
+          console.log('Found accounts:', accounts);
+          if (accounts && accounts.length > 0) {
             setAccount(accounts[0]);
             setIsConnected(true);
             
@@ -104,7 +118,7 @@ export const ProviderContextProvider = ({ children }) => {
           console.error('Error checking accounts:', error);
         }
       } else {
-        console.log('Please install MetaMask!');
+        console.log('No Ethereum provider detected. Please install MetaMask!');
       }
     };
     
@@ -153,21 +167,41 @@ export const ProviderContextProvider = ({ children }) => {
 
   // Connect wallet function
   const connectWallet = async () => {
-    if (!provider) {
-      console.log('MetaMask not installed');
+    console.log('Connecting wallet...', { provider, window_ethereum: window.ethereum });
+    
+    // Try to use window.ethereum directly if provider is not set
+    const providerToUse = provider || window.ethereum;
+    
+    if (!providerToUse) {
+      console.error('No provider available. Please install MetaMask!');
+      alert('MetaMask is not installed. Please install MetaMask to connect your wallet.');
       return;
     }
     
     try {
-      const accounts = await provider.request({ method: 'eth_requestAccounts' });
-      setAccount(accounts[0]);
-      setIsConnected(true);
+      console.log('Requesting accounts...');
+      const accounts = await providerToUse.request({ method: 'eth_requestAccounts' });
+      console.log('Accounts received:', accounts);
       
-      // Get chainId
-      const chainId = await provider.request({ method: 'eth_chainId' });
-      setChainId(chainId);
-      
-      return accounts[0];
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0]);
+        setIsConnected(true);
+        
+        // If we used window.ethereum but provider wasn't set, update it
+        if (!provider && window.ethereum) {
+          setProvider(window.ethereum);
+          setWeb3(new Web3(window.ethereum));
+        }
+        
+        // Get chainId
+        const chainId = await providerToUse.request({ method: 'eth_chainId' });
+        setChainId(chainId);
+        
+        return accounts[0];
+      } else {
+        console.error('No accounts found or user rejected the request');
+        throw new Error('No accounts found or user rejected the request');
+      }
     } catch (error) {
       console.error('Error connecting wallet:', error);
       throw error;
