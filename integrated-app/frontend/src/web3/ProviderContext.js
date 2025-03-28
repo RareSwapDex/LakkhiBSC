@@ -12,15 +12,22 @@ export const ProviderContext = createContext({
   connectWallet: () => {},
   disconnectWallet: () => {},
   donateToProject: async () => {},
+  validateNetworkCompatibility: () => {},
 });
 
 // Hook to use the provider context
 export const useProvider = () => useContext(ProviderContext);
 
-// Supported chain IDs (BSC Testnet and Mainnet)
-const SUPPORTED_CHAINS = {
-  '0x38': 'BSC Mainnet',
-  '0x61': 'BSC Testnet'
+// Network constants - but we don't enforce them during connection
+const NETWORKS = {
+  ETH: {
+    MAINNET: '0x1',
+    TESTNET: '0x5' // Goerli
+  },
+  BSC: {
+    MAINNET: '0x38',
+    TESTNET: '0x61'
+  }
 };
 
 // Campaign ABI for interacting with deployed contracts 
@@ -98,11 +105,9 @@ export const ProviderContextProvider = ({ children }) => {
           const accounts = await provider.request({ method: 'eth_accounts' });
           if (accounts.length > 0) {
             const chainId = await provider.request({ method: 'eth_chainId' });
-            if (SUPPORTED_CHAINS[chainId]) {
-              setAccount(accounts[0]);
-              setChainId(chainId);
-              setIsConnected(true);
-            }
+            setAccount(accounts[0]);
+            setChainId(chainId);
+            setIsConnected(true);
           }
         }
       } catch (error) {
@@ -134,10 +139,6 @@ export const ProviderContextProvider = ({ children }) => {
 
   const handleChainChanged = async (newChainId) => {
     setChainId(newChainId);
-    if (!SUPPORTED_CHAINS[newChainId]) {
-      setIsConnected(false);
-      alert('Please switch to BSC network (Mainnet or Testnet)');
-    }
   };
 
   const handleConnect = (connectInfo) => {
@@ -161,52 +162,14 @@ export const ProviderContextProvider = ({ children }) => {
         method: 'eth_requestAccounts'
       });
 
-      // Get chain ID
+      // Get chain ID without validation
       const chainId = await window.ethereum.request({
         method: 'eth_chainId'
       });
 
-      // Check if chain is supported
-      if (!SUPPORTED_CHAINS[chainId]) {
-        // Try to switch to BSC Testnet
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x61' }], // BSC Testnet
-          });
-        } catch (switchError) {
-          // If chain hasn't been added, add it
-          if (switchError.code === 4902) {
-            try {
-              await window.ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: '0x61',
-                  chainName: 'BSC Testnet',
-                  nativeCurrency: {
-                    name: 'BNB',
-                    symbol: 'BNB',
-                    decimals: 18
-                  },
-                  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
-                  blockExplorerUrls: ['https://testnet.bscscan.com']
-                }]
-              });
-            } catch (addError) {
-              console.error('Error adding BSC network:', addError);
-              alert('Please manually switch to BSC network');
-              return null;
-            }
-          } else {
-            console.error('Error switching network:', switchError);
-            alert('Please manually switch to BSC network');
-            return null;
-          }
-        }
-      }
-
       if (accounts[0]) {
         setAccount(accounts[0]);
+        setChainId(chainId);
         setIsConnected(true);
         setWeb3(new Web3(window.ethereum));
         return accounts[0];
@@ -221,6 +184,27 @@ export const ProviderContextProvider = ({ children }) => {
   const disconnectWallet = () => {
     setAccount(null);
     setIsConnected(false);
+  };
+
+  // Helper function to check if networks are compatible
+  const validateNetworkCompatibility = (tokenChainId) => {
+    const currentChainId = chainId;
+    
+    // Check if both chains are on the same network type (both ETH or both BSC)
+    const isCurrentBSC = currentChainId === NETWORKS.BSC.MAINNET || currentChainId === NETWORKS.BSC.TESTNET;
+    const isTokenBSC = tokenChainId === NETWORKS.BSC.MAINNET || tokenChainId === NETWORKS.BSC.TESTNET;
+    
+    if (isCurrentBSC !== isTokenBSC) {
+      return {
+        isValid: false,
+        message: `Network mismatch: Your wallet is connected to ${isCurrentBSC ? 'BSC' : 'Ethereum'} but the token is on ${isTokenBSC ? 'BSC' : 'Ethereum'}. Please switch networks to continue.`
+      };
+    }
+    
+    return {
+      isValid: true,
+      message: ''
+    };
   };
 
   const donateToProject = async (contractAddress, amount) => {
@@ -259,6 +243,7 @@ export const ProviderContextProvider = ({ children }) => {
     connectWallet,
     disconnectWallet,
     donateToProject,
+    validateNetworkCompatibility, // Expose this for token validation
   };
 
   return (
