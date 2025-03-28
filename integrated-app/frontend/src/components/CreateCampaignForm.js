@@ -24,6 +24,8 @@ const CreateCampaignForm = () => {
   const handleTokenValidation = (address, tokenInfo) => {
     // Map chainId to network name
     let network = '';
+    
+    // Convert numeric chainId to hex if needed
     const chainIdHex = tokenInfo.chainId.toString().startsWith('0x') 
       ? tokenInfo.chainId 
       : '0x' + Number(tokenInfo.chainId).toString(16);
@@ -53,10 +55,25 @@ const CreateCampaignForm = () => {
     e.preventDefault();
     // Form submission logic here
     console.log('Submitting form with data:', formData);
+    alert('Campaign creation initiated! This would deploy the smart contract in production.');
   };
 
   return (
-    <Container>
+    <Container className="py-4">
+      <h1 className="mb-4">Create New Campaign</h1>
+      
+      <div className="mb-4 p-4 bg-light border rounded">
+        <h3>Decentralized Campaign Ownership</h3>
+        <p>Lakkhi Funding uses a fully decentralized approach to campaign management. When you create a campaign:</p>
+        <ul>
+          <li>Your wallet address becomes the permanent owner of the campaign</li>
+          <li>A real smart contract is deployed on-chain using the PancakeSwap factory</li>
+          <li>The smart contract will send all collected funds to this wallet address</li>
+          <li>Only the owner wallet can withdraw or manage campaign funds</li>
+          <li>Ownership cannot be transferred later, so ensure you have access to this wallet</li>
+        </ul>
+      </div>
+      
       <Form onSubmit={handleSubmit}>
         <Row className="mb-3">
           <Col>
@@ -114,7 +131,11 @@ const CreateCampaignForm = () => {
                 disabled
                 placeholder="Chain will be auto-populated when token is validated"
                 className="form-control bg-light"
-                style={{ appearance: 'none' }}
+                style={{
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none'
+                }}
               />
               <Form.Text className="text-muted">
                 This field is automatically determined based on the token's network

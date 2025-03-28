@@ -9,7 +9,7 @@ import HomePage from './pages/HomePage/index';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
-import CreateCampaignPage from './pages/admin/CreateCampaignPage';
+import CreateCampaignForm from './components/CreateCampaignForm';
 import NotFoundPage from './pages/NotFoundPage';
 import FAQPage from './pages/FAQ';
 import PrivacyPolicyPage from './pages/Privacy';
@@ -31,8 +31,8 @@ function App() {
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
                 <Route path="/campaigns/:id" element={<ProjectDetailPage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
-                <Route path="/create-campaign" element={<CreateCampaignPage />} />
+                <Route path="/admin/create-campaign" element={<CreateCampaignForm />} />
+                <Route path="/create-campaign" element={<CreateCampaignForm />} />
                 <Route path="/faq" element={<FAQPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms-of-service" element={<TermsOfServicePage />} />
