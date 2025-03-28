@@ -17,12 +17,6 @@ export const ProviderContext = createContext({
 // Hook to use the provider context
 export const useProvider = () => useContext(ProviderContext);
 
-// Supported chain IDs (BSC Testnet and Mainnet)
-const SUPPORTED_CHAINS = {
-  '0x38': 'BSC Mainnet',
-  '0x61': 'BSC Testnet'
-};
-
 // Campaign ABI for interacting with deployed contracts 
 const CAMPAIGN_ABI = [
   {
@@ -81,37 +75,42 @@ export const ProviderContextProvider = ({ children }) => {
   // Initialize provider on component mount
   useEffect(() => {
     const initProvider = async () => {
-      try {
-        const provider = await detectEthereumProvider();
+      const detectedProvider = await detectEthereumProvider();
+      
+      if (detectedProvider) {
+        // Set up event listeners for MetaMask
+        detectedProvider.on('accountsChanged', handleAccountsChanged);
+        detectedProvider.on('chainChanged', handleChainChanged);
+        detectedProvider.on('connect', handleConnect);
+        detectedProvider.on('disconnect', handleDisconnect);
         
-        if (provider) {
-          // Set up event listeners
-          provider.on('accountsChanged', handleAccountsChanged);
-          provider.on('chainChanged', handleChainChanged);
-          provider.on('connect', handleConnect);
-          provider.on('disconnect', handleDisconnect);
-          
-          setProvider(provider);
-          setWeb3(new Web3(provider));
-          
-          // Check if already connected
-          const accounts = await provider.request({ method: 'eth_accounts' });
+        // Initialize Web3 with the detected provider
+        const web3Instance = new Web3(detectedProvider);
+        setWeb3(web3Instance);
+        setProvider(detectedProvider);
+        
+        // Check if already connected
+        try {
+          const accounts = await detectedProvider.request({ method: 'eth_accounts' });
           if (accounts.length > 0) {
-            const chainId = await provider.request({ method: 'eth_chainId' });
-            if (SUPPORTED_CHAINS[chainId]) {
-              setAccount(accounts[0]);
-              setChainId(chainId);
-              setIsConnected(true);
-            }
+            setAccount(accounts[0]);
+            setIsConnected(true);
+            
+            // Get chainId
+            const chainId = await detectedProvider.request({ method: 'eth_chainId' });
+            setChainId(chainId);
           }
+        } catch (error) {
+          console.error('Error checking accounts:', error);
         }
-      } catch (error) {
-        console.error('Error initializing provider:', error);
+      } else {
+        console.log('Please install MetaMask!');
       }
     };
-
+    
     initProvider();
     
+    // Clean up event listeners on unmount
     return () => {
       if (provider) {
         provider.removeListener('accountsChanged', handleAccountsChanged);
@@ -122,123 +121,90 @@ export const ProviderContextProvider = ({ children }) => {
     };
   }, []);
 
+  // Handle account change
   const handleAccountsChanged = (accounts) => {
     if (accounts.length === 0) {
+      // User disconnected their wallet
       setAccount(null);
       setIsConnected(false);
     } else {
+      // User switched accounts
       setAccount(accounts[0]);
       setIsConnected(true);
     }
   };
 
-  const handleChainChanged = async (newChainId) => {
-    setChainId(newChainId);
-    if (!SUPPORTED_CHAINS[newChainId]) {
-      setIsConnected(false);
-      alert('Please switch to BSC network (Mainnet or Testnet)');
-    }
+  // Handle chain change
+  const handleChainChanged = (chainId) => {
+    setChainId(chainId);
+    window.location.reload(); // Recommended by MetaMask
   };
 
+  // Handle connect event
   const handleConnect = (connectInfo) => {
     setIsConnected(true);
   };
 
+  // Handle disconnect event
   const handleDisconnect = (error) => {
     setIsConnected(false);
     setAccount(null);
   };
 
+  // Connect wallet function
   const connectWallet = async () => {
-    if (!window.ethereum) {
-      alert('Please install MetaMask or another Web3 wallet');
-      return null;
+    if (!provider) {
+      console.log('MetaMask not installed');
+      return;
     }
-
+    
     try {
-      // Request accounts
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      });
-
-      // Get chain ID
-      const chainId = await window.ethereum.request({
-        method: 'eth_chainId'
-      });
-
-      // Check if chain is supported
-      if (!SUPPORTED_CHAINS[chainId]) {
-        // Try to switch to BSC Testnet
-        try {
-          await window.ethereum.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: '0x61' }], // BSC Testnet
-          });
-        } catch (switchError) {
-          // If chain hasn't been added, add it
-          if (switchError.code === 4902) {
-            try {
-              await window.ethereum.request({
-                method: 'wallet_addEthereumChain',
-                params: [{
-                  chainId: '0x61',
-                  chainName: 'BSC Testnet',
-                  nativeCurrency: {
-                    name: 'BNB',
-                    symbol: 'BNB',
-                    decimals: 18
-                  },
-                  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
-                  blockExplorerUrls: ['https://testnet.bscscan.com']
-                }]
-              });
-            } catch (addError) {
-              console.error('Error adding BSC network:', addError);
-              alert('Please manually switch to BSC network');
-              return null;
-            }
-          } else {
-            console.error('Error switching network:', switchError);
-            alert('Please manually switch to BSC network');
-            return null;
-          }
-        }
-      }
-
-      if (accounts[0]) {
-        setAccount(accounts[0]);
-        setIsConnected(true);
-        setWeb3(new Web3(window.ethereum));
-        return accounts[0];
-      }
+      const accounts = await provider.request({ method: 'eth_requestAccounts' });
+      setAccount(accounts[0]);
+      setIsConnected(true);
+      
+      // Get chainId
+      const chainId = await provider.request({ method: 'eth_chainId' });
+      setChainId(chainId);
+      
+      return accounts[0];
     } catch (error) {
       console.error('Error connecting wallet:', error);
-      alert('Error connecting wallet. Please try again.');
-      return null;
+      throw error;
     }
   };
 
+  // Disconnect wallet function (for UI purposes)
   const disconnectWallet = () => {
     setAccount(null);
     setIsConnected(false);
   };
-
+  
+  // Donate to a project - This follows RareFnd's pattern
   const donateToProject = async (contractAddress, amount) => {
     if (!web3 || !account) {
       throw new Error('Wallet not connected');
     }
-
+    
     try {
+      // Create contract instance
       const campaignContract = new web3.eth.Contract(CAMPAIGN_ABI, contractAddress);
+      
+      // Convert amount to wei
       const amountWei = web3.utils.toWei(amount.toString(), 'ether');
+      
+      // Prepare transaction
       const tx = campaignContract.methods.donate(amountWei);
+      
+      // Estimate gas
       const gasEstimate = await tx.estimateGas({ from: account });
       
+      // Send transaction - THIS TRIGGERS METAMASK
       const receipt = await tx.send({
         from: account,
-        gas: Math.floor(gasEstimate * 1.2)
+        gas: Math.floor(gasEstimate * 1.2) // Add 20% buffer
       });
-
+      
       return {
         success: true,
         transactionHash: receipt.transactionHash,
