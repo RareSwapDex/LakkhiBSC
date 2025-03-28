@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Form, Button, Alert } from 'react-bootstrap';
 import { useProvider } from '../web3/ProviderContext';
 
 /**
@@ -6,14 +7,15 @@ import { useProvider } from '../web3/ProviderContext';
  * 
  * @param {string} value - Current token address value
  * @param {function} onTokenSelect - Function to call when token is selected
+ * @param {function} onChainSelect - Function to call when chain is selected
  * @returns {JSX.Element} TokenSelector component
  */
-const TokenSelector = ({ onTokenSelect }) => {
+const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
   const [tokenAddress, setTokenAddress] = useState('');
   const [tokenInfo, setTokenInfo] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { web3, chainId, validateNetworkCompatibility } = useProvider();
+  const { web3 } = useProvider();
 
   const validateToken = async () => {
     if (!tokenAddress) {
@@ -26,76 +28,120 @@ const TokenSelector = ({ onTokenSelect }) => {
     setTokenInfo(null);
 
     try {
-      // First validate the token contract exists and get its chain
-      const response = await fetch('/api/token/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // First try to validate the token contract exists
+      const tokenContract = new web3.eth.Contract([
+        {
+          "constant": true,
+          "inputs": [],
+          "name": "symbol",
+          "outputs": [{ "name": "", "type": "string" }],
+          "type": "function"
         },
-        body: JSON.stringify({ token_address: tokenAddress })
-      });
+        {
+          "constant": true,
+          "inputs": [],
+          "name": "name",
+          "outputs": [{ "name": "", "type": "string" }],
+          "type": "function"
+        },
+        {
+          "constant": true,
+          "inputs": [],
+          "name": "decimals",
+          "outputs": [{ "name": "", "type": "uint8" }],
+          "type": "function"
+        }
+      ], tokenAddress);
 
-      const data = await response.json();
+      // Get token details
+      const [symbol, name, decimals] = await Promise.all([
+        tokenContract.methods.symbol().call(),
+        tokenContract.methods.name().call(),
+        tokenContract.methods.decimals().call()
+      ]);
 
-      if (!data.success) {
-        setError(data.message || 'Invalid token address');
-        setIsLoading(false);
-        return;
+      // Get chain information
+      const chainId = await web3.eth.getChainId();
+      let network = 'Unknown';
+      
+      // Map chain IDs to network names
+      switch (chainId.toString()) {
+        case '1':
+          network = 'Ethereum Mainnet';
+          break;
+        case '56':
+          network = 'BSC Mainnet';
+          break;
+        case '97':
+          network = 'BSC Testnet';
+          break;
+        default:
+          network = `Chain ID: ${chainId}`;
       }
 
-      // Check network compatibility
-      const networkValidation = validateNetworkCompatibility(data.token_info.chainId);
-      if (!networkValidation.isValid) {
-        setError(networkValidation.message);
-        setIsLoading(false);
-        return;
-      }
+      const tokenData = {
+        address: tokenAddress,
+        symbol,
+        name,
+        decimals: parseInt(decimals),
+        network,
+        chainId: chainId.toString()
+      };
 
-      // If we get here, token is valid and on the correct network
-      setTokenInfo(data.token_info);
-      onTokenSelect(tokenAddress, data.token_info);
+      setTokenInfo(tokenData);
+      onTokenSelect(tokenAddress, tokenData);
+      
+      // Update the blockchain chain field
+      if (onChainSelect) {
+        onChainSelect(network);
+      }
     } catch (error) {
       console.error('Error validating token:', error);
-      setError('Error validating token. Please try again.');
+      setError('Invalid token address or contract. Please verify the address and try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="token-selector">
-      <div className="input-group">
-        <input
+    <Form.Group className="mb-3">
+      <Form.Label>Token Address <span className="text-danger">*</span></Form.Label>
+      <div className="d-flex gap-2">
+        <Form.Control
           type="text"
           value={tokenAddress}
           onChange={(e) => setTokenAddress(e.target.value)}
-          placeholder="Enter token contract address"
-          className={error ? 'error' : ''}
+          placeholder="Enter token contract address (0x...)"
+          style={{ minWidth: '400px' }}
+          className={error ? 'is-invalid' : ''}
         />
-        <button 
+        <Button 
+          variant="primary"
           onClick={validateToken}
           disabled={isLoading}
         >
           {isLoading ? 'Validating...' : 'Validate Token'}
-        </button>
+        </Button>
       </div>
-      
+
       {error && (
-        <div className="error-message">
+        <Alert variant="danger" className="mt-2">
           {error}
-        </div>
+        </Alert>
       )}
-      
+
       {tokenInfo && (
-        <div className="token-info">
-          <h4>Token Information</h4>
-          <p>Name: {tokenInfo.name}</p>
-          <p>Symbol: {tokenInfo.symbol}</p>
-          <p>Decimals: {tokenInfo.decimals}</p>
-          <p>Network: {tokenInfo.network}</p>
-        </div>
+        <Alert variant="success" className="mt-2">
+          <h6>Token Information</h6>
+          <p className="mb-0">
+            <strong>Name:</strong> {tokenInfo.name}<br />
+            <strong>Symbol:</strong> {tokenInfo.symbol}<br />
+            <strong>Decimals:</strong> {tokenInfo.decimals}<br />
+            <strong>Network:</strong> {tokenInfo.network}
+          </p>
+        </Alert>
       )}
-    </div>
+    </Form.Group>
   );
 };
 
