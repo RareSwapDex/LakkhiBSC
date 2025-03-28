@@ -10,14 +10,19 @@ import { useProvider } from '../web3/ProviderContext';
  * @param {function} onChainSelect - Function to call when chain is selected
  * @returns {JSX.Element} TokenSelector component
  */
-const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
+const TokenSelector = ({ onTokenSelect }) => {
   const [tokenAddress, setTokenAddress] = useState('');
   const [tokenInfo, setTokenInfo] = useState(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { web3 } = useProvider();
+  const { web3, isConnected, chainId } = useProvider();
 
   const validateToken = async () => {
+    if (!isConnected) {
+      setError('Please connect your wallet first');
+      return;
+    }
+
     if (!tokenAddress) {
       setError('Please enter a token address');
       return;
@@ -28,6 +33,7 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
     setTokenInfo(null);
 
     try {
+      // First try to validate the token contract exists
       const tokenContract = new web3.eth.Contract([
         {
           "constant": true,
@@ -52,44 +58,23 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
         }
       ], tokenAddress);
 
+      // Get token details
       const [symbol, name, decimals] = await Promise.all([
         tokenContract.methods.symbol().call(),
         tokenContract.methods.name().call(),
         tokenContract.methods.decimals().call()
       ]);
 
-      const chainId = await web3.eth.getChainId();
-      let network = 'Unknown';
-      
-      switch (chainId.toString()) {
-        case '1':
-          network = 'Ethereum Mainnet';
-          break;
-        case '56':
-          network = 'BSC Mainnet';
-          break;
-        case '97':
-          network = 'BSC Testnet';
-          break;
-        default:
-          network = `Chain ID: ${chainId}`;
-      }
-
       const tokenData = {
         address: tokenAddress,
         symbol,
         name,
         decimals: parseInt(decimals),
-        network,
-        chainId: chainId.toString()
+        chainId
       };
 
       setTokenInfo(tokenData);
       onTokenSelect(tokenAddress, tokenData);
-      
-      if (onChainSelect) {
-        onChainSelect(network);
-      }
     } catch (error) {
       console.error('Error validating token:', error);
       setError('Invalid token address or contract. Please verify the address and try again.');
@@ -113,7 +98,7 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
         <Button 
           variant="primary"
           onClick={validateToken}
-          disabled={isLoading}
+          disabled={isLoading || !isConnected}
         >
           {isLoading ? 'Validating...' : 'Validate Token'}
         </Button>
@@ -131,9 +116,14 @@ const TokenSelector = ({ onTokenSelect, onChainSelect }) => {
           <p className="mb-0">
             <strong>Name:</strong> {tokenInfo.name}<br />
             <strong>Symbol:</strong> {tokenInfo.symbol}<br />
-            <strong>Decimals:</strong> {tokenInfo.decimals}<br />
-            <strong>Network:</strong> {tokenInfo.network}
+            <strong>Decimals:</strong> {tokenInfo.decimals}
           </p>
+        </Alert>
+      )}
+
+      {!isConnected && (
+        <Alert variant="warning" className="mt-2">
+          Please connect your wallet to validate tokens.
         </Alert>
       )}
     </Form.Group>
