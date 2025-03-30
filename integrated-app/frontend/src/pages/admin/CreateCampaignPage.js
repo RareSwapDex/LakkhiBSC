@@ -743,33 +743,85 @@ const CreateCampaignPage = () => {
       if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
         try {
           setLoadingTokenPrice(true);
+          let priceData = null;
           
-          // Use mock prices for known tokens
-          let mockPriceUSD = null;
-          
-          // Use this fallback approach since the API calls are failing with CORS errors
-          if (tokenInfo.symbol === 'WHY') {
-            mockPriceUSD = 0.005; // $0.005 per WHY token
-          } else if (tokenInfo.symbol === 'CAKE') {
-            mockPriceUSD = 2.10; // $2.10 per CAKE token  
-          } else if (tokenInfo.symbol === 'TAT') {
-            mockPriceUSD = 0.03; // $0.03 per TAT token
-          } else if (tokenInfo.symbol === 'KILO') {
-            mockPriceUSD = 0.95; // $0.95 per KILO token
-          } else if (tokenInfo.symbol === 'WHY') {
-            mockPriceUSD = 0.01; // $0.01 per WHY token
-          } else {
-            // Default value for unknown tokens
-            mockPriceUSD = 0.10; // $0.10 for unknown tokens
+          // Try our main API first
+          try {
+            const response = await projectService.getTokenPrice(tokenInfo.address);
+            if (response && response.success && response.price_usd) {
+              priceData = response.price_usd;
+            }
+          } catch (mainApiError) {
+            console.error("Primary API failed:", mainApiError);
           }
           
-          setTokenPriceUSD(mockPriceUSD);
-          const fundAmount = parseFloat(formData.basics.projectFundAmount);
+          // If main API failed, try CoinGecko as fallback
+          if (!priceData) {
+            try {
+              // Try to match common tokens to their CoinGecko IDs
+              let coinId = null;
+              
+              if (tokenInfo.symbol.toLowerCase() === 'cake') {
+                coinId = 'pancakeswap-token';
+              } else if (tokenInfo.symbol.toLowerCase() === 'why') {
+                coinId = 'wormhole';
+              } else if (tokenInfo.symbol.toLowerCase() === 'bnb') {
+                coinId = 'binancecoin';
+              } else if (tokenInfo.symbol.toLowerCase() === 'eth') {
+                coinId = 'ethereum';
+              } else if (tokenInfo.symbol.toLowerCase() === 'btc') {
+                coinId = 'bitcoin';
+              }
+              
+              if (coinId) {
+                // Use CoinGecko public API (no API key needed)
+                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`, {
+                  method: 'GET',
+                  headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data && data[coinId] && data[coinId].usd) {
+                    priceData = data[coinId].usd;
+                    console.log(`CoinGecko price for ${tokenInfo.symbol}: $${priceData}`);
+                  }
+                }
+              } else {
+                // If symbol isn't recognized, try to search by contract address
+                // Using BSC tokens endpoint for simplicity
+                const response = await fetch(`https://api.coingecko.com/api/v3/coins/binance-smart-chain/contract/${tokenInfo.address}`, {
+                  method: 'GET',
+                  headers: { 'Accept': 'application/json' }
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data && data.market_data && data.market_data.current_price && data.market_data.current_price.usd) {
+                    priceData = data.market_data.current_price.usd;
+                    console.log(`CoinGecko price for ${tokenInfo.symbol} by address: $${priceData}`);
+                  }
+                }
+              }
+            } catch (coinGeckoError) {
+              console.error("CoinGecko API fallback failed:", coinGeckoError);
+            }
+          }
           
-          if (!isNaN(fundAmount) && mockPriceUSD > 0) {
-            const equivalent = fundAmount / mockPriceUSD;
-            setTokenEquivalent(equivalent);
+          // If we got price data from any source, calculate the equivalent
+          if (priceData) {
+            setTokenPriceUSD(priceData);
+            const fundAmount = parseFloat(formData.basics.projectFundAmount);
+            
+            if (!isNaN(fundAmount) && !isNaN(priceData) && parseFloat(priceData) > 0) {
+              const equivalent = fundAmount / parseFloat(priceData);
+              setTokenEquivalent(equivalent);
+            } else {
+              setTokenEquivalent(null);
+            }
           } else {
+            // Neither API worked, token equivalent can't be calculated
+            setTokenPriceUSD(null);
             setTokenEquivalent(null);
           }
         } catch (error) {
@@ -968,6 +1020,11 @@ const CreateCampaignPage = () => {
                       <Form.Text className="text-muted mt-2">
                         Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
                         {tokenPriceUSD && ` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
+                      </Form.Text>
+                    )}
+                    {tokenInfo && !tokenEquivalent && !loadingTokenPrice && (
+                      <Form.Text className="text-danger mt-2">
+                        Unable to retrieve price information for {tokenInfo.symbol}. Token conversion cannot be calculated.
                       </Form.Text>
                     )}
                   </Form.Group>
