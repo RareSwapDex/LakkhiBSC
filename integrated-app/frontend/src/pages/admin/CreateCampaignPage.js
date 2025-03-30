@@ -717,6 +717,20 @@ const CreateCampaignPage = () => {
     { id: 'other', name: 'Other' }
   ];
   
+  // Add a function to handle token info updates from TokenSelector
+  const handleTokenValidation = (tokenInfo) => {
+    setTokenInfo(tokenInfo);
+    
+    // If token validation included blockchain info, update the form's blockchain chain
+    if (tokenInfo && tokenInfo.blockchain) {
+      // Update the blockchain chain based on the detected blockchain
+      handleInputChange('basics', 'blockchainChain', tokenInfo.blockchain);
+    } else {
+      // Default to BSC if blockchain info wasn't detected
+      handleInputChange('basics', 'blockchainChain', 'BSC');
+    }
+  };
+  
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
   }
@@ -840,23 +854,26 @@ const CreateCampaignPage = () => {
               <TokenSelector 
                 value={formData.basics.tokenAddress}
                 onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
-                onValidate={(tokenInfo) => setTokenInfo(tokenInfo)}
-                onReset={() => setTokenInfo(null)}
+                onValidate={handleTokenValidation}
+                onReset={() => {
+                  setTokenInfo(null);
+                  // Reset to BSC when token is cleared
+                  handleInputChange('basics', 'blockchainChain', 'BSC');
+                }}
               />
               
               <Form.Group className="mb-3">
                 <Form.Label>Blockchain Chain*</Form.Label>
-                <Form.Select 
+                <Form.Control 
+                  type="text"
                   value={formData.basics.blockchainChain}
-                  onChange={(e) => handleInputChange('basics', 'blockchainChain', e.target.value)}
+                  readOnly
+                  className="bg-light"
                   required
-                >
-                  {blockchainChains.map(chain => (
-                    <option key={chain.id} value={chain.id}>
-                      {chain.name}
-                    </option>
-                  ))}
-                </Form.Select>
+                />
+                <Form.Text className="text-muted">
+                  This field is automatically set based on the validated token's blockchain.
+                </Form.Text>
               </Form.Group>
 
               <Form.Group className="mb-3">

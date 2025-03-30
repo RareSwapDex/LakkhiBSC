@@ -63,121 +63,156 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
         throw new Error('Invalid token address format. Must be a valid BSC address.');
       }
       
-      // Try with more reliable BSC endpoints - public RPC endpoints can be unreliable
-      const bscRpcUrls = [
-        'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3', // More reliable enterprise endpoint
-        'https://rpc.ankr.com/bsc',
-        'https://binance.nodereal.io',
-        'https://bsc-mainnet.public.blastapi.io',
-        'https://bsc-dataseed1.defibit.io/'
-      ];
+      // Define RPC endpoints for different blockchains
+      const blockchainRpcs = {
+        BSC: [
+          'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3',
+          'https://rpc.ankr.com/bsc',
+          'https://binance.nodereal.io',
+          'https://bsc-mainnet.public.blastapi.io',
+          'https://bsc-dataseed1.defibit.io/'
+        ],
+        Ethereum: [
+          'https://eth-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3',
+          'https://rpc.ankr.com/eth',
+          'https://eth-mainnet.public.blastapi.io'
+        ],
+        Base: [
+          'https://mainnet.base.org',
+          'https://base-mainnet.public.blastapi.io',
+          'https://base.blockpi.network/v1/rpc/public'
+        ]
+      };
       
+      // Try the blockchains in preferred order
+      const chainOrder = ['BSC', 'Ethereum', 'Base'];
+      let detectedChain = null;
       let web3 = null;
-      let connectionSuccessful = false;
+      let checksumAddress = null;
+      let tokenContractCode = null;
       
-      // First try using the connected wallet's provider - most reliable
+      // First try using the connected wallet's provider if available
       if (window.ethereum) {
         try {
           web3 = new Web3(window.ethereum);
-          // Test the connection with a small call
           await web3.eth.net.isListening();
-          connectionSuccessful = true;
-          console.log('Connected using wallet provider');
+          
+          // Try to get the address and code using wallet provider
+          checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
+          tokenContractCode = await web3.eth.getCode(checksumAddress);
+          
+          if (tokenContractCode && tokenContractCode !== '0x' && tokenContractCode !== '0x0') {
+            // Determine which network the wallet is connected to
+            const chainId = await web3.eth.getChainId();
+            
+            // Map chainId to our chains
+            if (chainId === 56) {
+              detectedChain = 'BSC';
+            } else if (chainId === 1) {
+              detectedChain = 'Ethereum';
+            } else if (chainId === 8453) {
+              detectedChain = 'Base';
+            } else {
+              // Default to BSC if we can't determine
+              detectedChain = 'BSC';
+            }
+            
+            console.log(`Using wallet connection - detected chain: ${detectedChain}`);
+          }
         } catch (walletError) {
-          console.warn('Wallet provider connection failed:', walletError);
+          console.warn('Wallet connection failed, will try RPC endpoints:', walletError);
           web3 = null;
         }
       }
       
-      // If wallet connection failed, try public RPC endpoints
-      if (!connectionSuccessful) {
-        for (const rpcUrl of bscRpcUrls) {
-          if (connectionSuccessful) break;
+      // If wallet check didn't give us a result, try each chain's RPC endpoints
+      if (!detectedChain) {
+        for (const chain of chainOrder) {
+          const rpcUrls = blockchainRpcs[chain];
           
-          try {
-            const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl, {
-              timeout: 5000, // 5 second timeout
-              headers: [
-                { name: 'Access-Control-Allow-Origin', value: '*' }
-              ]
-            }));
-            
-            // Test the connection with a small call
-            await tempWeb3.eth.net.isListening();
-            web3 = tempWeb3;
-            connectionSuccessful = true;
-            console.log(`Connected to ${rpcUrl} successfully`);
-          } catch (rpcError) {
-            console.warn(`Failed to connect to ${rpcUrl}:`, rpcError);
+          for (const rpcUrl of rpcUrls) {
+            try {
+              const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl, {
+                timeout: 5000,
+                headers: [{ name: 'Access-Control-Allow-Origin', value: '*' }]
+              }));
+              
+              await tempWeb3.eth.net.isListening();
+              
+              const tempChecksumAddress = tempWeb3.utils.toChecksumAddress(tokenAddress);
+              const code = await tempWeb3.eth.getCode(tempChecksumAddress);
+              
+              if (code && code !== '0x' && code !== '0x0') {
+                web3 = tempWeb3;
+                checksumAddress = tempChecksumAddress;
+                tokenContractCode = code;
+                detectedChain = chain;
+                console.log(`Contract found on ${chain} using ${rpcUrl}`);
+                break;
+              }
+            } catch (error) {
+              console.warn(`Failed to check token on ${chain} using ${rpcUrl}:`, error);
+            }
           }
+          
+          if (detectedChain) break;
         }
       }
       
-      if (!web3 || !connectionSuccessful) {
-        throw new Error('Unable to connect to the blockchain. Please try again later.');
+      // If we still couldn't detect the chain, default to BSC
+      if (!detectedChain) {
+        detectedChain = 'BSC';
+        console.log('Could not detect chain, defaulting to BSC');
       }
       
-      // Rest of the code to validate token
+      if (!web3 || !checksumAddress || !tokenContractCode || tokenContractCode === '0x' || tokenContractCode === '0x0') {
+        throw new Error('Unable to validate token. Please check the address and try again.');
+      }
+      
+      // Standard ERC20 ABI
+      const tokenABI = [
+        { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+        { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+        { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+      ];
+      
+      const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
+      
+      // Try to get token data
+      let name, symbol, decimals;
+      
       try {
-        // Convert to checksum address
-        const checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
-        
-        // Check if address is a contract
-        const code = await web3.eth.getCode(checksumAddress).catch(e => {
-          console.error('Error getting code:', e);
-          throw new Error('Network connection issue. Please try again.');
+        name = await tokenContract.methods.name().call();
+      } catch (e) {
+        console.error('Error getting token name:', e);
+        name = null;
+      }
+      
+      try {
+        symbol = await tokenContract.methods.symbol().call();
+      } catch (e) {
+        console.error('Error getting token symbol:', e);
+        symbol = null;
+      }
+      
+      try {
+        decimals = await tokenContract.methods.decimals().call();
+      } catch (e) {
+        console.error('Error getting token decimals:', e);
+        decimals = '18'; // Default to 18 decimals
+      }
+      
+      if (name && symbol) {
+        // Include the detected blockchain in the token info
+        setTokenInfo({
+          name: name,
+          symbol: symbol,
+          decimals: parseInt(decimals || '18', 10),
+          address: checksumAddress,
+          blockchain: detectedChain  // Add the blockchain info
         });
-        
-        if (code === '0x' || code === '0x0') {
-          throw new Error('The address is not a token contract.');
-        }
-        
-        // Standard ERC20 ABI
-        const tokenABI = [
-          { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-          { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-          { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
-        ];
-        
-        const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
-        
-        // Try to get token data
-        let name, symbol, decimals;
-        
-        try {
-          name = await tokenContract.methods.name().call();
-        } catch (e) {
-          console.error('Error getting token name:', e);
-          name = null;
-        }
-        
-        try {
-          symbol = await tokenContract.methods.symbol().call();
-        } catch (e) {
-          console.error('Error getting token symbol:', e);
-          symbol = null;
-        }
-        
-        try {
-          decimals = await tokenContract.methods.decimals().call();
-        } catch (e) {
-          console.error('Error getting token decimals:', e);
-          decimals = '18'; // Default to 18 decimals
-        }
-        
-        if (name && symbol) {
-          setTokenInfo({
-            name: name,
-            symbol: symbol,
-            decimals: parseInt(decimals || '18', 10),
-            address: checksumAddress
-          });
-        } else {
-          throw new Error('Could not retrieve token information. This may not be a standard token.');
-        }
-      } catch (error) {
-        console.error('Token validation error:', error);
-        throw error;
+      } else {
+        throw new Error('Could not retrieve token information. This may not be a standard token.');
       }
     } catch (error) {
       console.error('Token validation failed:', error);
