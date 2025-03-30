@@ -55,8 +55,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
     
     setIsValidating(true);
     setError(null);
-    setTokenInfo(null); // Clear any previous token info
-    console.log('Starting token validation for address:', tokenAddress);
+    setTokenInfo(null);
     
     try {
       // Frontend validation for proper address format
@@ -64,102 +63,125 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
         throw new Error('Invalid token address format. Must be a valid BSC address.');
       }
       
-      console.log('Starting Web3 validation');
-      
-      // Try with multiple reliable RPC endpoints for BSC
+      // Try with more reliable BSC endpoints - public RPC endpoints can be unreliable
       const bscRpcUrls = [
-        'https://bsc-dataseed.binance.org/',
-        'https://bsc-dataseed1.binance.org/',
-        'https://bsc-dataseed2.binance.org/',
-        'https://bsc-dataseed3.binance.org/',
-        'https://bsc-dataseed4.binance.org/',
-        'https://rpc.ankr.com/bsc'
+        'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3', // More reliable enterprise endpoint
+        'https://rpc.ankr.com/bsc',
+        'https://binance.nodereal.io',
+        'https://bsc-mainnet.public.blastapi.io',
+        'https://bsc-dataseed1.defibit.io/'
       ];
       
-      // Use the connected wallet provider if available, otherwise try RPC URLs
-      let web3;
+      let web3 = null;
+      let connectionSuccessful = false;
+      
+      // First try using the connected wallet's provider - most reliable
       if (window.ethereum) {
-        console.log('Using connected wallet provider');
-        web3 = new Web3(window.ethereum);
-      } else {
-        // Try each RPC URL until one works
+        try {
+          web3 = new Web3(window.ethereum);
+          // Test the connection with a small call
+          await web3.eth.net.isListening();
+          connectionSuccessful = true;
+          console.log('Connected using wallet provider');
+        } catch (walletError) {
+          console.warn('Wallet provider connection failed:', walletError);
+          web3 = null;
+        }
+      }
+      
+      // If wallet connection failed, try public RPC endpoints
+      if (!connectionSuccessful) {
         for (const rpcUrl of bscRpcUrls) {
+          if (connectionSuccessful) break;
+          
           try {
-            console.log(`Trying RPC URL: ${rpcUrl}`);
-            web3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
-            // Test the connection
-            await web3.eth.getBlockNumber();
+            const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl, {
+              timeout: 5000, // 5 second timeout
+              headers: [
+                { name: 'Access-Control-Allow-Origin', value: '*' }
+              ]
+            }));
+            
+            // Test the connection with a small call
+            await tempWeb3.eth.net.isListening();
+            web3 = tempWeb3;
+            connectionSuccessful = true;
             console.log(`Connected to ${rpcUrl} successfully`);
-            break;
           } catch (rpcError) {
             console.warn(`Failed to connect to ${rpcUrl}:`, rpcError);
-            web3 = null;
           }
         }
       }
       
-      if (!web3) {
-        throw new Error('Could not connect to any BSC node. Please try again later.');
+      if (!web3 || !connectionSuccessful) {
+        throw new Error('Unable to connect to the blockchain. Please try again later.');
       }
       
-      // Convert to checksum address
-      const checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
-      
-      // Check if it's a contract
-      console.log('Checking if address is a contract');
-      const code = await web3.eth.getCode(checksumAddress);
-      
-      if (code === '0x' || code === '0x0') {
-        throw new Error('The address is not a contract. Please enter a valid token contract address.');
-      }
-      
-      // Standard ERC20 ABI with all necessary methods
-      const tokenABI = [
-        { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-        { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-        { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
-      ];
-      
-      const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
-      
+      // Rest of the code to validate token
       try {
-        // Try to get token data with longer timeout
-        const [name, symbol, decimals] = await Promise.all([
-          tokenContract.methods.name().call().catch(e => { 
-            console.error('Failed to get name:', e); 
-            return null; 
-          }),
-          tokenContract.methods.symbol().call().catch(e => { 
-            console.error('Failed to get symbol:', e); 
-            return null; 
-          }),
-          tokenContract.methods.decimals().call().catch(e => { 
-            console.error('Failed to get decimals:', e); 
-            return null; 
-          })
-        ]);
+        // Convert to checksum address
+        const checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
         
-        console.log('Token data from blockchain:', { name, symbol, decimals });
+        // Check if address is a contract
+        const code = await web3.eth.getCode(checksumAddress).catch(e => {
+          console.error('Error getting code:', e);
+          throw new Error('Network connection issue. Please try again.');
+        });
         
-        // Only proceed if we successfully got at least name and symbol
+        if (code === '0x' || code === '0x0') {
+          throw new Error('The address is not a token contract.');
+        }
+        
+        // Standard ERC20 ABI
+        const tokenABI = [
+          { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+          { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+        ];
+        
+        const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
+        
+        // Try to get token data
+        let name, symbol, decimals;
+        
+        try {
+          name = await tokenContract.methods.name().call();
+        } catch (e) {
+          console.error('Error getting token name:', e);
+          name = null;
+        }
+        
+        try {
+          symbol = await tokenContract.methods.symbol().call();
+        } catch (e) {
+          console.error('Error getting token symbol:', e);
+          symbol = null;
+        }
+        
+        try {
+          decimals = await tokenContract.methods.decimals().call();
+        } catch (e) {
+          console.error('Error getting token decimals:', e);
+          decimals = '18'; // Default to 18 decimals
+        }
+        
         if (name && symbol) {
           setTokenInfo({
             name: name,
             symbol: symbol,
-            decimals: decimals ? parseInt(decimals) : 18,
+            decimals: parseInt(decimals || '18', 10),
             address: checksumAddress
           });
         } else {
-          throw new Error('Could not retrieve token information. This may not be a standard token contract.');
+          throw new Error('Could not retrieve token information. This may not be a standard token.');
         }
-      } catch (contractError) {
-        console.error('Error getting token data from contract:', contractError);
-        throw new Error('Failed to validate token. The contract does not appear to be a standard token.');
+      } catch (error) {
+        console.error('Token validation error:', error);
+        throw error;
       }
     } catch (error) {
       console.error('Token validation failed:', error);
-      setError(error.message || 'Failed to validate token. Please check the address and try again.');
-      // Don't set any fallback token info - leave it as null
+      setError(error.message || 'Failed to validate token');
       setTokenInfo(null);
     } finally {
       setIsValidating(false);
