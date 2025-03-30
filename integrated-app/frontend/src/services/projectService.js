@@ -83,18 +83,6 @@ export const validateToken = async (tokenAddress) => {
   }
 };
 
-// Add a function to get the token price in USD
-export const getTokenPriceInUSD = async (tokenAddress) => {
-  try {
-    // Get token price from Coinmarketcap API
-    const response = await axios.get(`${API_URL}/api/token/price/?token_address=${tokenAddress}`);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching token price:', error);
-    throw error;
-  }
-};
-
 export default {
   getAllProjects,
   getProjectById,
@@ -102,6 +90,5 @@ export default {
   getProjectContributions,
   publishProject,
   getTokenPrice,
-  validateToken,
-  getTokenPriceInUSD
+  validateToken
 }; 
