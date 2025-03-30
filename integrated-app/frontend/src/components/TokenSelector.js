@@ -128,31 +128,58 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
               // Try to get token info with a simplified approach
               console.log('Getting token info from contract');
               
-              // Simplified approach - try one method at a time
+              // Use a more comprehensive ABI with name, symbol, and decimals
+              const tokenABI = [
+                { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+                { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
+                { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
+              ];
+              
+              const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
+              
               try {
-                // Use a smaller token ABI with just the essentials
-                const tokenABI = [
-                  { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" }
-                ];
+                // Try to get all token data in parallel
+                const [name, symbol, decimals] = await Promise.all([
+                  tokenContract.methods.name().call().catch(() => null),
+                  tokenContract.methods.symbol().call().catch(() => null),
+                  tokenContract.methods.decimals().call().catch(() => '18')
+                ]);
                 
-                const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
-                const symbol = await tokenContract.methods.symbol().call();
-                console.log('Got token symbol:', symbol);
+                console.log('Got token details from blockchain:', { name, symbol, decimals });
+                
+                let tokenName = name;
+                let tokenSymbol = symbol;
+                
+                // If we couldn't get the name or symbol, use fallbacks
+                if (!tokenName || !tokenSymbol) {
+                  if (!tokenName && tokenSymbol) {
+                    tokenName = tokenSymbol + ' Token';
+                  } else if (tokenName && !tokenSymbol) {
+                    tokenSymbol = tokenName.substring(0, 4).toUpperCase();
+                  } else {
+                    // If we couldn't get either, use address-based fallback
+                    const shortAddress = checksumAddress.slice(2, 6).toUpperCase();
+                    tokenName = 'Token ' + shortAddress;
+                    tokenSymbol = 'TKN' + shortAddress;
+                  }
+                }
                 
                 web3TokenInfo = {
-                  name: symbol + ' Token',
-                  symbol: symbol,
-                  decimals: 18,
+                  name: tokenName,
+                  symbol: tokenSymbol,
+                  decimals: parseInt(decimals || '18', 10),
                   address: checksumAddress,
                 };
-              } catch (symbolError) {
-                console.warn('Could not get symbol:', symbolError);
+                
+                console.log('Using compiled token info:', web3TokenInfo);
+              } catch (detailsError) {
+                console.warn('Error getting token details:', detailsError);
                 
                 // Fallback to basic info
-                const shortSymbol = tokenAddress.slice(2, 6).toUpperCase();
+                const shortSymbol = checksumAddress.slice(2, 6).toUpperCase();
                 web3TokenInfo = {
-                  name: 'Token',
-                  symbol: `TKN${shortSymbol}`,
+                  name: 'Token ' + shortSymbol,
+                  symbol: 'TKN' + shortSymbol,
                   decimals: 18,
                   address: checksumAddress,
                 };
