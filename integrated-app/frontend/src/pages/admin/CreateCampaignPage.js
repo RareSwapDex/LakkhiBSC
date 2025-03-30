@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ProviderContext } from '../../web3/ProviderContext';
 import TokenSelector from '../../components/TokenSelector';
+import projectService from '../../services/projectService';
 
 const CreateCampaignPage = () => {
   const navigate = useNavigate();
@@ -20,6 +21,10 @@ const CreateCampaignPage = () => {
   const [validatingToken, setValidatingToken] = useState(false);
   const [tokenInfo, setTokenInfo] = useState(null);
   const [tokenError, setTokenError] = useState(null);
+  
+  // Add these state variables for token conversion
+  const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
+  const [tokenEquivalent, setTokenEquivalent] = useState(null);
   
   // Form data state
   const [formData, setFormData] = useState({
@@ -731,6 +736,49 @@ const CreateCampaignPage = () => {
     }
   };
   
+  // Modify the useEffect for token equivalent calculation to use a hardcoded approach for now
+  useEffect(() => {
+    const calculateTokenEquivalent = async () => {
+      if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
+        try {
+          // Hardcoded price data for testing based on token symbol
+          let mockPriceUSD = null;
+          
+          if (tokenInfo.symbol === 'WHY') {
+            mockPriceUSD = 0.01; // $0.01 per WHY token (example)
+          } else if (tokenInfo.symbol === 'CAKE') {
+            mockPriceUSD = 2.13; // $2.13 per CAKE token (example)
+          } else if (tokenInfo.symbol === 'KILO') {
+            mockPriceUSD = 0.95; // $0.95 per KILO token (example)
+          } else {
+            // Default value for unknown tokens
+            mockPriceUSD = 0.50; // $0.50 for unknown tokens
+          }
+          
+          setTokenPriceUSD(mockPriceUSD);
+          const fundAmount = parseFloat(formData.basics.projectFundAmount);
+          
+          if (!isNaN(fundAmount) && mockPriceUSD > 0) {
+            const equivalent = fundAmount / mockPriceUSD;
+            setTokenEquivalent(equivalent);
+          } else {
+            setTokenEquivalent(null);
+          }
+        } catch (error) {
+          console.error('Error calculating token equivalent:', error);
+          setTokenPriceUSD(null);
+          setTokenEquivalent(null);
+        }
+      } else {
+        // Reset if prerequisites aren't met
+        setTokenPriceUSD(null);
+        setTokenEquivalent(null);
+      }
+    };
+    
+    calculateTokenEquivalent();
+  }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency]);
+  
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
   }
@@ -902,6 +950,12 @@ const CreateCampaignPage = () => {
                       step="0.01"
                       placeholder="Enter amount"
                     />
+                    {tokenInfo && tokenEquivalent && (
+                      <Form.Text className="text-muted mt-2">
+                        Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
+                        {tokenPriceUSD && ` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
+                      </Form.Text>
+                    )}
                   </Form.Group>
                 </Col>
                 <Col md={6}>
