@@ -737,90 +737,55 @@ const CreateCampaignPage = () => {
     }
   };
   
-  // Add a function to get token price using Web3 and Pancakeswap
-  const getTokenPriceFromPancakeswap = async (tokenAddress) => {
+  // Add this function to get prices from open, CORS-friendly APIs
+  const getTokenPrice = async (tokenSymbol) => {
     try {
-      // Initialize web3
-      const Web3 = require('web3');
-      let web3;
+      // Try multiple public APIs until we get a price
       
-      if (window.ethereum) {
-        web3 = new Web3(window.ethereum);
-      } else {
-        // Use BSC RPC URL
-        const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
-        web3 = new Web3(new Web3.providers.HttpProvider(BSC_RPC_URL));
+      // Option 1: Use CoinGecko public API through a CORS proxy
+      const corsProxy = 'https://cors-anywhere.herokuapp.com/';
+      const coinGeckoAPI = 'https://api.coingecko.com/api/v3/simple/price';
+      
+      // Convert common token symbols to CoinGecko IDs
+      let coinId = tokenSymbol.toLowerCase();
+      if (tokenSymbol === 'WHY') coinId = 'whitebit';
+      if (tokenSymbol === 'CAKE') coinId = 'pancakeswap-token';
+      if (tokenSymbol === 'KILO') coinId = 'kilopi';
+      
+      const response = await axios.get(`${corsProxy}${coinGeckoAPI}?ids=${coinId}&vs_currencies=usd`);
+      
+      if (response.data && response.data[coinId] && response.data[coinId].usd) {
+        return response.data[coinId].usd;
       }
       
-      // PancakeSwap Router address
-      const PANCAKESWAP_ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
-      
-      // Router ABI for the getAmountsOut function
-      const routerAbi = [
-        {
-          "inputs": [
-            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
-            {"internalType": "address[]", "name": "path", "type": "address[]"}
-          ],
-          "name": "getAmountsOut",
-          "outputs": [{"internalType": "uint256[]", "name": "amounts", "type": "uint256[]"}],
-          "stateMutability": "view",
-          "type": "function"
+      // If CoinGecko fails, try Binance price API through proxy for popular tokens
+      if (['BNB', 'CAKE', 'ETH', 'WBNB'].includes(tokenSymbol)) {
+        const symbol = tokenSymbol === 'WBNB' ? 'BNB' : tokenSymbol;
+        const binanceAPI = 'https://api.binance.com/api/v3/ticker/price';
+        const binanceResponse = await axios.get(`${corsProxy}${binanceAPI}?symbol=${symbol}USDT`);
+        
+        if (binanceResponse.data && binanceResponse.data.price) {
+          return parseFloat(binanceResponse.data.price);
         }
-      ];
-      
-      // WBNB and BUSD addresses on BSC
-      const WBNB = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
-      const BUSD = '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56';
-      
-      // Create router contract instance
-      const router = new web3.eth.Contract(routerAbi, PANCAKESWAP_ROUTER);
-      
-      // Amount to use for price calculation (1 token with 18 decimals)
-      const amountIn = web3.utils.toWei('1', 'ether');
-      
-      let path;
-      if (tokenAddress.toLowerCase() === BUSD.toLowerCase()) {
-        // If the token is BUSD, return 1 as the price
-        return 1;
-      } else if (tokenAddress.toLowerCase() === WBNB.toLowerCase()) {
-        // If the token is WBNB, get WBNB/BUSD price
-        path = [WBNB, BUSD];
-      } else {
-        // For other tokens, use token -> WBNB -> BUSD path
-        path = [tokenAddress, WBNB, BUSD];
       }
       
-      // Get amounts out from PancakeSwap
-      const amounts = await router.methods.getAmountsOut(amountIn, path).call();
-      
-      // Calculate price in USD
-      let priceUSD;
-      
-      if (path.length === 2) {
-        // Direct WBNB to BUSD
-        priceUSD = web3.utils.fromWei(amounts[1], 'ether');
-      } else {
-        // Token to WBNB to BUSD
-        priceUSD = web3.utils.fromWei(amounts[2], 'ether');
-      }
-      
-      return parseFloat(priceUSD);
+      // If both fail, throw an error
+      throw new Error('Could not retrieve price data');
     } catch (error) {
-      console.error('Error getting price from PancakeSwap:', error);
-      return null;
+      console.error('Error fetching token price:', error);
+      throw error;
     }
   };
   
-  // Update the useEffect for token price calculation to use direct Web3 calls
+  // Replace the useEffect for token price calculation
   useEffect(() => {
     const calculateTokenEquivalent = async () => {
       if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
         try {
           setLoadingTokenPrice(true);
           
-          // Get token price directly from PancakeSwap
-          const price = await getTokenPriceFromPancakeswap(tokenInfo.address);
+          // Get token price using our public API method
+          const price = await getTokenPrice(tokenInfo.symbol);
           
           if (price) {
             setTokenPriceUSD(price);
@@ -833,9 +798,7 @@ const CreateCampaignPage = () => {
               setTokenEquivalent(null);
             }
           } else {
-            // Couldn't get price
-            setTokenPriceUSD(null);
-            setTokenEquivalent(null);
+            throw new Error('Could not retrieve price data');
           }
         } catch (error) {
           console.error('Error calculating token equivalent:', error);
