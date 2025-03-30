@@ -22,6 +22,11 @@ const CreateCampaignPage = () => {
   const [tokenInfo, setTokenInfo] = useState(null);
   const [tokenError, setTokenError] = useState(null);
   
+  // Add state variables for token price conversion
+  const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
+  const [tokenEquivalent, setTokenEquivalent] = useState(null);
+  const [loadingTokenPrice, setLoadingTokenPrice] = useState(false);
+  
   // Form data state
   const [formData, setFormData] = useState({
     basics: {
@@ -732,6 +737,46 @@ const CreateCampaignPage = () => {
     }
   };
   
+  // Add useEffect to calculate token equivalent when fund amount or token info changes
+  useEffect(() => {
+    const calculateTokenEquivalent = async () => {
+      if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
+        try {
+          setLoadingTokenPrice(true);
+          // Get token price from API
+          const priceResponse = await projectService.getTokenPrice(tokenInfo.address);
+          
+          if (priceResponse && priceResponse.success && priceResponse.price_usd) {
+            setTokenPriceUSD(priceResponse.price_usd);
+            const fundAmount = parseFloat(formData.basics.projectFundAmount);
+            const priceUSD = parseFloat(priceResponse.price_usd);
+            
+            if (!isNaN(fundAmount) && !isNaN(priceUSD) && priceUSD > 0) {
+              const equivalent = fundAmount / priceUSD;
+              setTokenEquivalent(equivalent);
+            } else {
+              setTokenEquivalent(null);
+            }
+          } else {
+            setTokenPriceUSD(null);
+            setTokenEquivalent(null);
+          }
+        } catch (error) {
+          console.error('Error calculating token equivalent:', error);
+          setTokenPriceUSD(null);
+          setTokenEquivalent(null);
+        } finally {
+          setLoadingTokenPrice(false);
+        }
+      } else {
+        setTokenPriceUSD(null);
+        setTokenEquivalent(null);
+      }
+    };
+    
+    calculateTokenEquivalent();
+  }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency]);
+  
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
   }
@@ -903,6 +948,17 @@ const CreateCampaignPage = () => {
                       step="0.01"
                       placeholder="Enter amount"
                     />
+                    {loadingTokenPrice && (
+                      <Form.Text className="text-muted mt-2">
+                        Calculating token equivalent...
+                      </Form.Text>
+                    )}
+                    {tokenInfo && tokenEquivalent && !loadingTokenPrice && (
+                      <Form.Text className="text-muted mt-2">
+                        Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
+                        {tokenPriceUSD && ` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
+                      </Form.Text>
+                    )}
                   </Form.Group>
                 </Col>
                 <Col md={6}>
