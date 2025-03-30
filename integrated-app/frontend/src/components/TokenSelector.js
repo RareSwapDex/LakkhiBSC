@@ -62,7 +62,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       if (!tokenAddress.startsWith('0x') || tokenAddress.length !== 42) {
         throw new Error('Invalid token address format. Must be a valid BSC address.');
       }
-      
+
       // Define RPC endpoints for different blockchains
       const blockchainRpcs = {
         BSC: [
@@ -94,7 +94,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       // First try using the connected wallet's provider if available
       if (window.ethereum) {
         try {
-          web3 = new Web3(window.ethereum);
+            web3 = new Web3(window.ethereum);
           await web3.eth.net.isListening();
           
           // Try to get the address and code using wallet provider
@@ -112,7 +112,7 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
               detectedChain = 'Ethereum';
             } else if (chainId === 8453) {
               detectedChain = 'Base';
-            } else {
+          } else {
               // Default to BSC if we can't determine
               detectedChain = 'BSC';
             }
@@ -286,7 +286,8 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
           <p className="mb-0">
             <strong>Name:</strong> {tokenInfo.name}<br />
             <strong>Symbol:</strong> {tokenInfo.symbol}<br />
-            <strong>Decimals:</strong> {tokenInfo.decimals}
+            <strong>Decimals:</strong> {tokenInfo.decimals}<br />
+            <strong>Blockchain:</strong> {tokenInfo.blockchain || 'BSC'}
           </p>
         </Alert>
       )}
