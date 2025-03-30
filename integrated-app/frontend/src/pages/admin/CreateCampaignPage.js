@@ -737,90 +737,103 @@ const CreateCampaignPage = () => {
     }
   };
   
-  // Modify the useEffect for token price calculation to handle CORS errors better
+  // Add a function to get token price using Web3 and Pancakeswap
+  const getTokenPriceFromPancakeswap = async (tokenAddress) => {
+    try {
+      // Initialize web3
+      const Web3 = require('web3');
+      let web3;
+      
+      if (window.ethereum) {
+        web3 = new Web3(window.ethereum);
+      } else {
+        // Use BSC RPC URL
+        const BSC_RPC_URL = process.env.REACT_APP_BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
+        web3 = new Web3(new Web3.providers.HttpProvider(BSC_RPC_URL));
+      }
+      
+      // PancakeSwap Router address
+      const PANCAKESWAP_ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
+      
+      // Router ABI for the getAmountsOut function
+      const routerAbi = [
+        {
+          "inputs": [
+            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+            {"internalType": "address[]", "name": "path", "type": "address[]"}
+          ],
+          "name": "getAmountsOut",
+          "outputs": [{"internalType": "uint256[]", "name": "amounts", "type": "uint256[]"}],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ];
+      
+      // WBNB and BUSD addresses on BSC
+      const WBNB = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
+      const BUSD = '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56';
+      
+      // Create router contract instance
+      const router = new web3.eth.Contract(routerAbi, PANCAKESWAP_ROUTER);
+      
+      // Amount to use for price calculation (1 token with 18 decimals)
+      const amountIn = web3.utils.toWei('1', 'ether');
+      
+      let path;
+      if (tokenAddress.toLowerCase() === BUSD.toLowerCase()) {
+        // If the token is BUSD, return 1 as the price
+        return 1;
+      } else if (tokenAddress.toLowerCase() === WBNB.toLowerCase()) {
+        // If the token is WBNB, get WBNB/BUSD price
+        path = [WBNB, BUSD];
+      } else {
+        // For other tokens, use token -> WBNB -> BUSD path
+        path = [tokenAddress, WBNB, BUSD];
+      }
+      
+      // Get amounts out from PancakeSwap
+      const amounts = await router.methods.getAmountsOut(amountIn, path).call();
+      
+      // Calculate price in USD
+      let priceUSD;
+      
+      if (path.length === 2) {
+        // Direct WBNB to BUSD
+        priceUSD = web3.utils.fromWei(amounts[1], 'ether');
+      } else {
+        // Token to WBNB to BUSD
+        priceUSD = web3.utils.fromWei(amounts[2], 'ether');
+      }
+      
+      return parseFloat(priceUSD);
+    } catch (error) {
+      console.error('Error getting price from PancakeSwap:', error);
+      return null;
+    }
+  };
+  
+  // Update the useEffect for token price calculation to use direct Web3 calls
   useEffect(() => {
     const calculateTokenEquivalent = async () => {
       if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
         try {
           setLoadingTokenPrice(true);
-          let priceData = null;
           
-          // Try our main API first
-          try {
-            const response = await projectService.getTokenPrice(tokenInfo.address);
-            if (response && response.success && response.price_usd) {
-              priceData = response.price_usd;
-            }
-          } catch (mainApiError) {
-            console.error("Primary API failed:", mainApiError);
-          }
+          // Get token price directly from PancakeSwap
+          const price = await getTokenPriceFromPancakeswap(tokenInfo.address);
           
-          // If main API failed, try CoinGecko as fallback
-          if (!priceData) {
-            try {
-              // Try to match common tokens to their CoinGecko IDs
-              let coinId = null;
-              
-              if (tokenInfo.symbol.toLowerCase() === 'cake') {
-                coinId = 'pancakeswap-token';
-              } else if (tokenInfo.symbol.toLowerCase() === 'why') {
-                coinId = 'wormhole';
-              } else if (tokenInfo.symbol.toLowerCase() === 'bnb') {
-                coinId = 'binancecoin';
-              } else if (tokenInfo.symbol.toLowerCase() === 'eth') {
-                coinId = 'ethereum';
-              } else if (tokenInfo.symbol.toLowerCase() === 'btc') {
-                coinId = 'bitcoin';
-              }
-              
-              if (coinId) {
-                // Use CoinGecko public API (no API key needed)
-                const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`, {
-                  method: 'GET',
-                  headers: { 'Accept': 'application/json' }
-                });
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  if (data && data[coinId] && data[coinId].usd) {
-                    priceData = data[coinId].usd;
-                    console.log(`CoinGecko price for ${tokenInfo.symbol}: $${priceData}`);
-                  }
-                }
-              } else {
-                // If symbol isn't recognized, try to search by contract address
-                // Using BSC tokens endpoint for simplicity
-                const response = await fetch(`https://api.coingecko.com/api/v3/coins/binance-smart-chain/contract/${tokenInfo.address}`, {
-                  method: 'GET',
-                  headers: { 'Accept': 'application/json' }
-                });
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  if (data && data.market_data && data.market_data.current_price && data.market_data.current_price.usd) {
-                    priceData = data.market_data.current_price.usd;
-                    console.log(`CoinGecko price for ${tokenInfo.symbol} by address: $${priceData}`);
-                  }
-                }
-              }
-            } catch (coinGeckoError) {
-              console.error("CoinGecko API fallback failed:", coinGeckoError);
-            }
-          }
-          
-          // If we got price data from any source, calculate the equivalent
-          if (priceData) {
-            setTokenPriceUSD(priceData);
+          if (price) {
+            setTokenPriceUSD(price);
             const fundAmount = parseFloat(formData.basics.projectFundAmount);
             
-            if (!isNaN(fundAmount) && !isNaN(priceData) && parseFloat(priceData) > 0) {
-              const equivalent = fundAmount / parseFloat(priceData);
+            if (!isNaN(fundAmount) && price > 0) {
+              const equivalent = fundAmount / price;
               setTokenEquivalent(equivalent);
             } else {
               setTokenEquivalent(null);
             }
           } else {
-            // Neither API worked, token equivalent can't be calculated
+            // Couldn't get price
             setTokenPriceUSD(null);
             setTokenEquivalent(null);
           }
