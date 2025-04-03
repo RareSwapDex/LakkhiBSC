@@ -12,6 +12,7 @@ export const ProviderContext = createContext({
   connectWallet: () => {},
   disconnectWallet: () => {},
   donateToProject: async () => {},
+  switchChain: async () => {},
 });
 
 // Hook to use the provider context
@@ -150,19 +151,115 @@ export const ProviderContextProvider = ({ children }) => {
 
   // Handle chain change
   const handleChainChanged = (chainId) => {
+    console.log('Chain changed to:', chainId);
     setChainId(chainId);
-    window.location.reload(); // Recommended by MetaMask
+    // We no longer reload the page on chain change to provide a smoother experience
+    // window.location.reload(); // Recommended by MetaMask
   };
 
   // Handle connect event
   const handleConnect = (connectInfo) => {
+    console.log('Wallet connected:', connectInfo);
     setIsConnected(true);
+    // Update chainId on connect
+    if (connectInfo && connectInfo.chainId) {
+      setChainId(connectInfo.chainId);
+    }
   };
 
   // Handle disconnect event
   const handleDisconnect = (error) => {
+    console.log('Wallet disconnected:', error);
     setIsConnected(false);
     setAccount(null);
+  };
+
+  // Chain switching functionality
+  const switchChain = async (targetChainId) => {
+    if (!provider) {
+      throw new Error('No provider available');
+    }
+
+    try {
+      console.log(`Attempting to switch to chain: ${targetChainId}`);
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainId }],
+      });
+      
+      return true;
+    } catch (switchError) {
+      // This error code indicates that the chain has not been added to MetaMask
+      if (switchError.code === 4902 || 
+          switchError.message.includes('wallet_addEthereumChain')) {
+        try {
+          await addChain(targetChainId);
+          return true;
+        } catch (addError) {
+          console.error('Error adding chain:', addError);
+          throw new Error(`Failed to add chain: ${addError.message}`);
+        }
+      }
+      
+      console.error('Error switching chain:', switchError);
+      throw switchError;
+    }
+  };
+
+  // Add chain to MetaMask
+  const addChain = async (targetChainId) => {
+    // Network configurations
+    const chains = {
+      '0x1': {
+        chainId: '0x1',
+        chainName: 'Ethereum Mainnet',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18
+        },
+        rpcUrls: ['https://mainnet.infura.io/v3/'],
+        blockExplorerUrls: ['https://etherscan.io']
+      },
+      '0x38': {
+        chainId: '0x38',
+        chainName: 'Binance Smart Chain',
+        nativeCurrency: {
+          name: 'Binance Coin',
+          symbol: 'BNB',
+          decimals: 18
+        },
+        rpcUrls: ['https://bsc-dataseed.binance.org'],
+        blockExplorerUrls: ['https://bscscan.com']
+      },
+      '0x8453': {
+        chainId: '0x8453',
+        chainName: 'Base Mainnet',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18
+        },
+        rpcUrls: ['https://mainnet.base.org'],
+        blockExplorerUrls: ['https://basescan.org']
+      }
+    };
+
+    const chainConfig = chains[targetChainId];
+    if (!chainConfig) {
+      throw new Error(`Configuration for chain ${targetChainId} not found`);
+    }
+
+    try {
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [chainConfig],
+      });
+      return true;
+    } catch (error) {
+      console.error('Error adding chain:', error);
+      throw error;
+    }
   };
 
   // Connect wallet function
@@ -259,6 +356,7 @@ export const ProviderContextProvider = ({ children }) => {
     connectWallet,
     disconnectWallet,
     donateToProject,
+    switchChain,
   };
 
   return (

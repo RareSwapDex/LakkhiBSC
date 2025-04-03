@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { Container, Form, Button, Card, Row, Col, Alert, Spinner, Tabs, Tab, ListGroup, InputGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -9,7 +9,7 @@ import Web3 from 'web3';
 
 const CreateCampaignPage = () => {
   const navigate = useNavigate();
-  const { provider, isConnected, account } = useContext(ProviderContext);
+  const { provider, isConnected, account, chainId, switchChain } = useContext(ProviderContext);
   
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +27,9 @@ const CreateCampaignPage = () => {
   const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
   const [tokenEquivalent, setTokenEquivalent] = useState(null);
   const [loadingTokenPrice, setLoadingTokenPrice] = useState(false);
+  const [isSwitchingChain, setIsSwitchingChain] = useState(false);
+  const [lastPriceLookup, setLastPriceLookup] = useState(null);
+  const priceUpdateTimeout = useRef(null);
   
   // Form data state
   const [formData, setFormData] = useState({
@@ -405,7 +408,109 @@ const CreateCampaignPage = () => {
         [field]: value
       }
     }));
+
+    // Trigger price update after short delay when fund amount changes
+    if (section === 'basics' && field === 'projectFundAmount' && tokenInfo) {
+      // Clear any existing timeout
+      if (priceUpdateTimeout.current) {
+        clearTimeout(priceUpdateTimeout.current);
+      }
+      
+      // Set a new timeout to debounce the price calculation
+      priceUpdateTimeout.current = setTimeout(() => {
+        const now = new Date().getTime();
+        // Only recalculate if last calculation was more than 2 seconds ago or if the price isn't set yet
+        if (!lastPriceLookup || (now - lastPriceLookup) > 2000 || !tokenPriceUSD) {
+          calculateTokenEquivalent(tokenInfo, value);
+          setLastPriceLookup(now);
+        } else {
+          // If we have a recent price, just update the equivalent without API calls
+          if (tokenPriceUSD && value) {
+            const fundAmount = parseFloat(value);
+            if (!isNaN(fundAmount) && tokenPriceUSD > 0) {
+              const equivalent = fundAmount / tokenPriceUSD;
+              setTokenEquivalent(equivalent);
+            }
+          }
+        }
+      }, 500);
+    }
   };
+  
+  // Move token equivalent calculation to a separate function
+  const calculateTokenEquivalent = async (tokenData, fundAmount) => {
+    if (!tokenData || !fundAmount) {
+      setTokenPriceUSD(null);
+      setTokenEquivalent(null);
+      return;
+    }
+    
+    try {
+      setLoadingTokenPrice(true);
+      
+      const price = await getTokenPriceWithoutCORS(
+        tokenData.address, 
+        tokenData.symbol,
+        formData.basics.blockchainChain
+      );
+      
+      if (price) {
+        setTokenPriceUSD(price);
+        const parsedAmount = parseFloat(fundAmount);
+        
+        if (!isNaN(parsedAmount) && price > 0) {
+          const equivalent = parsedAmount / price;
+          setTokenEquivalent(equivalent);
+        } else {
+          setTokenEquivalent(null);
+        }
+      } else {
+        throw new Error('Could not retrieve price data');
+      }
+    } catch (error) {
+      console.error('Error calculating token equivalent:', error);
+      setTokenPriceUSD(null);
+      setTokenEquivalent(null);
+    } finally {
+      setLoadingTokenPrice(false);
+    }
+  };
+  
+  // Add a function to handle token info updates from TokenSelector
+  const handleTokenValidation = (tokenInfo) => {
+    setTokenInfo(tokenInfo);
+    
+    // If token validation included blockchain info, update the form's blockchain chain
+    if (tokenInfo && tokenInfo.blockchain) {
+      // Update the blockchain chain based on the detected blockchain
+      handleInputChange('basics', 'blockchainChain', tokenInfo.blockchain);
+      
+      // Trigger token price calculation with the current fund amount
+      if (formData.basics.projectFundAmount) {
+        calculateTokenEquivalent(tokenInfo, formData.basics.projectFundAmount);
+      }
+    } else {
+      // Default to BSC if blockchain info wasn't detected
+      handleInputChange('basics', 'blockchainChain', 'BSC');
+    }
+  };
+  
+  // Replace the useEffect for token price calculation
+  useEffect(() => {
+    if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
+      calculateTokenEquivalent(tokenInfo, formData.basics.projectFundAmount);
+    } else {
+      setTokenPriceUSD(null);
+      setTokenEquivalent(null);
+    }
+    
+    // Cleanup the timeout on unmount
+    return () => {
+      if (priceUpdateTimeout.current) {
+        clearTimeout(priceUpdateTimeout.current);
+      }
+    };
+  }, [tokenInfo, formData.basics.projectFundCurrency, formData.basics.blockchainChain]);
   
   // Handle file upload
   const handleFileChange = (e) => {
@@ -435,6 +540,65 @@ const CreateCampaignPage = () => {
     }));
   };
   
+  // Convert blockchain name to chain ID
+  const getChainIdFromBlockchain = (blockchain) => {
+    const chainIds = {
+      'BSC': '0x38',      // 56 in decimal
+      'Ethereum': '0x1',  // 1 in decimal
+      'Base': '0x8453',   // 8453 in decimal
+    };
+    return chainIds[blockchain] || null;
+  };
+
+  // Switch network in MetaMask using the context function
+  const switchNetwork = async (targetBlockchain) => {
+    try {
+      setIsSwitchingChain(true);
+      setError(`Switching to ${targetBlockchain} network. Please confirm in your wallet...`);
+      
+      if (!window.ethereum) {
+        throw new Error('MetaMask not detected');
+      }
+
+      const targetChainId = getChainIdFromBlockchain(targetBlockchain);
+      if (!targetChainId) {
+        throw new Error(`Unknown blockchain: ${targetBlockchain}`);
+      }
+
+      // Use the switchChain function from context
+      await switchChain(targetChainId);
+      
+      // Wait a moment for the UI to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setError(`Successfully switched to ${targetBlockchain} network. You can now create your campaign.`);
+      return true;
+    } catch (error) {
+      console.error('Error switching network:', error);
+      setError(`Failed to switch network: ${error.message}`);
+      return false;
+    } finally {
+      setIsSwitchingChain(false);
+    }
+  };
+
+  // Check if current chain matches token's blockchain
+  const validateChainMatch = async () => {
+    if (!tokenInfo || !tokenInfo.blockchain) {
+      setError('Token blockchain information is missing');
+      return false;
+    }
+
+    const currentChainIdValue = chainId;  // Use chainId from context
+    const expectedChainId = getChainIdFromBlockchain(tokenInfo.blockchain);
+
+    if (!currentChainIdValue || !expectedChainId) {
+      setError('Unable to determine blockchain network information');
+      return false;
+    }
+
+    return currentChainIdValue === expectedChainId;
+  };
+  
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -461,6 +625,36 @@ const CreateCampaignPage = () => {
     if (!tokenInfo) {
       setError('Please validate your token address before submitting. Click the Validate button next to the token address field.');
       return;
+    }
+
+    // Check if the wallet's chain matches the token's blockchain
+    const isOnCorrectChain = await validateChainMatch();
+    if (!isOnCorrectChain) {
+      setError(`Your wallet is connected to the wrong blockchain network. Your token (${tokenInfo.symbol}) is on ${tokenInfo.blockchain} but your wallet is on a different network.`);
+      
+      // Show blockchain switch prompt
+      const shouldSwitch = window.confirm(
+        `Your wallet needs to be on the ${tokenInfo.blockchain} network to create this campaign, but it's currently on a different network.\n\nWould you like to switch to ${tokenInfo.blockchain} now?`
+      );
+      
+      if (shouldSwitch) {
+        const switchSuccess = await switchNetwork(tokenInfo.blockchain);
+        if (!switchSuccess) {
+          return; // Stop if switching failed
+        }
+        // If switch was successful, we need to wait a moment for wallet to update
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verify again after switching
+        const chainMatchAfterSwitch = await validateChainMatch();
+        if (!chainMatchAfterSwitch) {
+          setError(`Failed to switch to ${tokenInfo.blockchain} network. Please switch manually in your wallet and try again.`);
+          return;
+        }
+      } else {
+        setError(`Please switch your wallet to the ${tokenInfo.blockchain} network manually and try again.`);
+        return;
+      }
     }
     
     // Validate complete form
@@ -748,6 +942,55 @@ const CreateCampaignPage = () => {
     return null;
   };
   
+  // Add network mismatch alert function
+  const renderNetworkAlert = () => {
+    // Only show if token is validated and there's a blockchain mismatch
+    if (tokenInfo && tokenInfo.blockchain) {
+      // Check if we can determine the current chain
+      const currentChainName = (() => {
+        if (chainId) {
+          if (chainId === '0x1') return 'Ethereum';
+          if (chainId === '0x38') return 'BSC';
+          if (chainId === '0x8453') return 'Base';
+        }
+        return null;
+      })();
+
+      // If we can't determine the chain or if it matches, don't show alert
+      if (!currentChainName || currentChainName === tokenInfo.blockchain) {
+        return null;
+      }
+
+      return (
+        <Alert variant="danger" className="mt-2 mb-3">
+          <Alert.Heading>Network Mismatch Detected</Alert.Heading>
+          <p>
+            Your wallet is connected to <strong>{currentChainName}</strong> but your token is on <strong>{tokenInfo.blockchain}</strong>.
+            You need to switch networks before creating this campaign.
+          </p>
+          <div className="d-grid gap-2 d-md-flex justify-content-md-end">
+            <Button 
+              variant="outline-primary" 
+              onClick={() => switchNetwork(tokenInfo.blockchain)}
+              disabled={isSwitchingChain}
+            >
+              {isSwitchingChain ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-2" />
+                  Switching...
+                </>
+              ) : (
+                `Switch to ${tokenInfo.blockchain}`
+              )}
+            </Button>
+          </div>
+        </Alert>
+      );
+    }
+    
+    return null;
+  };
+  
   // Campaign categories
   const campaignCategories = [
     { id: '', name: 'Select a category' },
@@ -760,20 +1003,6 @@ const CreateCampaignPage = () => {
     { id: 'social', name: 'Social' },
     { id: 'other', name: 'Other' }
   ];
-  
-  // Add a function to handle token info updates from TokenSelector
-  const handleTokenValidation = (tokenInfo) => {
-    setTokenInfo(tokenInfo);
-    
-    // If token validation included blockchain info, update the form's blockchain chain
-    if (tokenInfo && tokenInfo.blockchain) {
-      // Update the blockchain chain based on the detected blockchain
-      handleInputChange('basics', 'blockchainChain', tokenInfo.blockchain);
-    } else {
-      // Default to BSC if blockchain info wasn't detected
-      handleInputChange('basics', 'blockchainChain', 'BSC');
-    }
-  };
   
   // Add this function to get prices from open, CORS-friendly APIs
   const getTokenPrice = async (tokenSymbol) => {
@@ -815,28 +1044,57 @@ const CreateCampaignPage = () => {
     }
   };
   
-  // Add a function to calculate price using PancakeSwap router for BSC tokens
+  // Add a function to calculate price using DEX routers for different chains
   const getTokenPriceFromDex = async (tokenAddress) => {
     try {
       if (!tokenAddress) return null;
       
       // Initialize Web3 with a provider - try user's wallet first, fallback to RPC
       let web3;
+      let dexInfo;
+      
+      // Get current blockchain from context
+      const currentChain = chainId;
+      
       if (window.ethereum) {
         web3 = new Web3(window.ethereum);
+        
+        // Determine which DEX to use based on chain
+        if (currentChain === '0x38') { // BSC
+          dexInfo = {
+            routerAddress: '0x10ED43C718714eb63d5aA57B78B54704E256024E', // PancakeSwap
+            nativeTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
+            stableTokenAddress: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
+            dexName: 'PancakeSwap'
+          };
+        } else if (currentChain === '0x1') { // Ethereum
+          dexInfo = {
+            routerAddress: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', // Uniswap
+            nativeTokenAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
+            stableTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
+            dexName: 'Uniswap'
+          };
+        } else if (currentChain === '0x8453') { // Base
+          dexInfo = {
+            routerAddress: '0x327Df1E6de05895d2ab08513aaDD9313Fe505d86', // BaseSwap
+            nativeTokenAddress: '0x4200000000000000000000000000000000000006', // WETH on Base
+            stableTokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+            dexName: 'BaseSwap'
+          };
+        } else {
+          console.warn(`No DEX information available for chainId: ${currentChain}`);
+          return null;
+        }
       } else {
-        // Use BSC RPC endpoint
+        // Fallback to BSC if no provider
         web3 = new Web3(new Web3.providers.HttpProvider('https://bsc-dataseed.binance.org/'));
+        dexInfo = {
+          routerAddress: '0x10ED43C718714eb63d5aA57B78B54704E256024E', // PancakeSwap
+          nativeTokenAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
+          stableTokenAddress: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', // BUSD
+          dexName: 'PancakeSwap'
+        };
       }
-      
-      // PancakeSwap Router Address
-      const PANCAKE_ROUTER_ADDRESS = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
-      
-      // BNB/WBNB token address (used as base pair)
-      const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
-      
-      // BUSD token address (for price in USD equivalent)
-      const BUSD_ADDRESS = '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56';
       
       // Router ABI (minimal for price checking)
       const routerAbi = [
@@ -866,38 +1124,66 @@ const CreateCampaignPage = () => {
       ];
       
       // Initialize router contract
-      const router = new web3.eth.Contract(routerAbi, PANCAKE_ROUTER_ADDRESS);
+      const router = new web3.eth.Contract(routerAbi, dexInfo.routerAddress);
       
       // Get token decimals
       const tokenContract = new web3.eth.Contract(tokenAbi, tokenAddress);
-      const decimals = await tokenContract.methods.decimals().call();
+      let decimals;
+      
+      try {
+        decimals = await tokenContract.methods.decimals().call();
+      } catch (error) {
+        console.warn('Error getting token decimals, defaulting to 18:', error);
+        decimals = 18;
+      }
       
       // Set amount of tokens to get price for (1 token with decimals)
       const amountIn = web3.utils.toBN(10).pow(web3.utils.toBN(decimals)).toString();
       
-      // Try to get price using token -> WBNB -> BUSD path
+      // Try to get price using token -> NATIVE -> STABLE path
       try {
-        const path = [tokenAddress, WBNB_ADDRESS, BUSD_ADDRESS];
+        const path = [tokenAddress, dexInfo.nativeTokenAddress, dexInfo.stableTokenAddress];
+        console.log(`Checking price via ${dexInfo.dexName} with path: ${path.join(' -> ')}`);
+        
         const amounts = await router.methods.getAmountsOut(amountIn, path).call();
         
         // Convert the output amount to USD price
-        const busdDecimals = 18;  // BUSD has 18 decimals
-        const priceInBusd = amounts[2] / Math.pow(10, busdDecimals);
-        return priceInBusd;
+        const stableDecimals = 18; // Most stablecoins use 18 decimals
+        const priceInStable = amounts[2] / Math.pow(10, stableDecimals);
+        console.log(`Price from ${dexInfo.dexName}: $${priceInStable}`);
+        return priceInStable;
       } catch (error) {
-        console.warn('Error getting token price via WBNB->BUSD path:', error);
+        console.warn(`Error getting token price via ${dexInfo.nativeTokenAddress} path:`, error);
         
-        // Fallback: try direct token -> BUSD path if it exists
+        // Fallback: try direct token -> STABLE path if it exists
         try {
-          const path = [tokenAddress, BUSD_ADDRESS];
+          const path = [tokenAddress, dexInfo.stableTokenAddress];
+          console.log(`Trying direct path: ${path.join(' -> ')}`);
+          
           const amounts = await router.methods.getAmountsOut(amountIn, path).call();
           
           // Convert the output amount to USD price
-          const busdDecimals = 18;  // BUSD has 18 decimals
-          const priceInBusd = amounts[1] / Math.pow(10, busdDecimals);
-          return priceInBusd;
+          const stableDecimals = 18; // Most stablecoins use 18 decimals
+          const priceInStable = amounts[1] / Math.pow(10, stableDecimals);
+          console.log(`Direct price from ${dexInfo.dexName}: $${priceInStable}`);
+          return priceInStable;
         } catch (directError) {
-          console.warn('Error getting direct token->BUSD price:', directError);
+          console.warn(`Error getting direct token->${dexInfo.stableTokenAddress} price:`, directError);
+          
+          // Try reverse path for very popular tokens (if token is the native token)
+          if (tokenAddress.toLowerCase() === dexInfo.nativeTokenAddress.toLowerCase()) {
+            try {
+              // For example, if token is WETH, check WETH->USDC price
+              const path = [dexInfo.nativeTokenAddress, dexInfo.stableTokenAddress];
+              const amounts = await router.methods.getAmountsOut(amountIn, path).call();
+              const priceInStable = amounts[1] / Math.pow(10, 18);
+              console.log(`Native token price from ${dexInfo.dexName}: $${priceInStable}`);
+              return priceInStable;
+            } catch (nativeError) {
+              console.warn(`Error getting native token price:`, nativeError);
+            }
+          }
+          
           return null;
         }
       }
@@ -910,11 +1196,18 @@ const CreateCampaignPage = () => {
   // New function to get token prices without CORS issues
   const getTokenPriceWithoutCORS = async (tokenAddress, tokenSymbol, blockchain) => {
     try {
+      console.log(`Getting price for token: ${tokenSymbol} (${tokenAddress}) on ${blockchain}`);
+      
       // Try on-chain price first (most accurate for BSC tokens)
-      if (blockchain === 'BSC' || blockchain === 'Ethereum') {
-        const dexPrice = await getTokenPriceFromDex(tokenAddress);
-        if (dexPrice && dexPrice > 0) {
-          return dexPrice;
+      if (blockchain === 'BSC') {
+        try {
+          const dexPrice = await getTokenPriceFromDex(tokenAddress);
+          if (dexPrice && dexPrice > 0) {
+            console.log(`Found price from DEX: $${dexPrice}`);
+            return dexPrice;
+          }
+        } catch (dexError) {
+          console.warn('DEX price lookup failed:', dexError);
         }
       }
       
@@ -922,10 +1215,25 @@ const CreateCampaignPage = () => {
       try {
         const priceResponse = await projectService.getTokenPrice(tokenAddress);
         if (priceResponse && priceResponse.success && priceResponse.price_usd) {
+          console.log(`Found price from backend API: $${priceResponse.price_usd}`);
           return parseFloat(priceResponse.price_usd);
         }
       } catch (apiError) {
         console.warn('Backend API price fallback failed:', apiError);
+      }
+      
+      // Try CoinGecko API for known tokens
+      try {
+        const coinGeckoId = getCoinGeckoIdForToken(tokenSymbol);
+        if (coinGeckoId) {
+          const price = await getTokenPriceFromCoinGecko(coinGeckoId);
+          if (price && price > 0) {
+            console.log(`Found price from CoinGecko: $${price}`);
+            return price;
+          }
+        }
+      } catch (coinGeckoError) {
+        console.warn('CoinGecko price lookup failed:', coinGeckoError);
       }
       
       // Use well-known token prices for common tokens as last resort
@@ -935,66 +1243,83 @@ const CreateCampaignPage = () => {
         'CAKE': 1.75,
         'KILO': 0.0054,
         'ETH': 2950.80,
+        'WETH': 2950.80,
         'WBNB': 215.45,
         'SOL': 149.32,
         'USDT': 1.0,
         'USDC': 1.0,
-        'BUSD': 1.0
+        'BUSD': 1.0,
+        'DAI': 1.0,
+        'MATIC': 0.56,
+        'SHIB': 0.00002345,
+        'AVAX': 28.40,
+        'LINK': 13.85
       };
       
       if (tokenSymbol && wellKnownPrices[tokenSymbol]) {
-        console.log(`Using hardcoded price for ${tokenSymbol} as last resort`);
+        console.log(`Using hardcoded price for ${tokenSymbol} as last resort: $${wellKnownPrices[tokenSymbol]}`);
         return wellKnownPrices[tokenSymbol];
       }
       
-      throw new Error('Could not retrieve price data');
+      throw new Error('Could not retrieve price data from any source');
     } catch (error) {
       console.error('Error getting token price:', error);
       return null;
     }
   };
   
-  // Replace the useEffect for token price calculation
-  useEffect(() => {
-    const calculateTokenEquivalent = async () => {
-      if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
-        try {
-          setLoadingTokenPrice(true);
-          
-          const price = await getTokenPriceWithoutCORS(
-            tokenInfo.address, 
-            tokenInfo.symbol,
-            formData.basics.blockchainChain
-          );
-          
-          if (price) {
-            setTokenPriceUSD(price);
-            const fundAmount = parseFloat(formData.basics.projectFundAmount);
-            
-            if (!isNaN(fundAmount) && price > 0) {
-              const equivalent = fundAmount / price;
-              setTokenEquivalent(equivalent);
-            } else {
-              setTokenEquivalent(null);
-            }
-          } else {
-            throw new Error('Could not retrieve price data');
-          }
-        } catch (error) {
-          console.error('Error calculating token equivalent:', error);
-          setTokenPriceUSD(null);
-          setTokenEquivalent(null);
-        } finally {
-          setLoadingTokenPrice(false);
-        }
-      } else {
-        setTokenPriceUSD(null);
-        setTokenEquivalent(null);
-      }
+  // Map common token symbols to CoinGecko IDs
+  const getCoinGeckoIdForToken = (symbol) => {
+    if (!symbol) return null;
+    
+    const symbolMap = {
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'BNB': 'binancecoin',
+      'WETH': 'weth',
+      'WBNB': 'wbnb',
+      'CAKE': 'pancakeswap-token',
+      'USDT': 'tether',
+      'USDC': 'usd-coin',
+      'BUSD': 'binance-usd',
+      'DAI': 'dai',
+      'MATIC': 'matic-network',
+      'AVAX': 'avalanche-2',
+      'LINK': 'chainlink',
+      'SOL': 'solana',
+      'DOT': 'polkadot',
+      'UNI': 'uniswap',
+      'ADA': 'cardano',
+      'DOGE': 'dogecoin',
+      'SHIB': 'shiba-inu',
+      'XRP': 'ripple',
+      'AAVE': 'aave',
+      'COMP': 'compound-governance-token',
+      'SUSHI': 'sushi',
     };
     
-    calculateTokenEquivalent();
-  }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency]);
+    return symbolMap[symbol] || symbol.toLowerCase();
+  };
+  
+  // Get price from CoinGecko API
+  const getTokenPriceFromCoinGecko = async (coinId) => {
+    try {
+      // CoinGecko public API - may be rate limited
+      const response = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.data && response.data[coinId] && response.data[coinId].usd) {
+        return response.data[coinId].usd;
+      }
+      return null;
+    } catch (error) {
+      console.warn(`CoinGecko API error for ${coinId}:`, error);
+      return null;
+    }
+  };
   
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
@@ -1032,8 +1357,10 @@ const CreateCampaignPage = () => {
       </Card>
       
       {renderWalletAlert()}
+      {renderNetworkAlert()}
       
-      {error && <Alert variant="danger">{error}</Alert>}
+      {error && <Alert variant="danger" className="mb-3">{error}</Alert>}
+      {submitSuccess && <Alert variant="success" className="mb-3">Campaign created successfully!</Alert>}
       
       <Tabs defaultActiveKey="basics" id="campaign-form-tabs" className="mb-3">
         <Tab eventKey="basics" title="Basics">
@@ -1167,24 +1494,42 @@ const CreateCampaignPage = () => {
                     step="0.01"
                     placeholder="Enter amount"
                   />
-                    {loadingTokenPrice && (
-                      <Form.Text className="text-muted mt-2">
-                        Calculating token equivalent...
-                      </Form.Text>
-                    )}
-                    {tokenInfo && tokenEquivalent && !loadingTokenPrice && (
-                      <Form.Text className="text-muted mt-2">
-                        Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
-                        {tokenPriceUSD && ` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
-                        <br/>
-                        <span className="text-success">Chain: {formData.basics.blockchainChain}</span>
-                      </Form.Text>
-                    )}
-                    {tokenInfo && !tokenEquivalent && !loadingTokenPrice && (
-                      <Form.Text className="text-danger mt-2">
-                        Unable to retrieve price information for {tokenInfo.symbol}. Token conversion cannot be calculated.
-                      </Form.Text>
-                    )}
+                  
+                  {loadingTokenPrice && (
+                    <div className="mt-2">
+                      <Spinner size="sm" animation="border" className="me-2" />
+                      <span className="text-muted">Calculating token equivalent...</span>
+                    </div>
+                  )}
+                  
+                  {tokenInfo && tokenEquivalent && !loadingTokenPrice && (
+                    <div className="mt-2 p-2 bg-light rounded border border-success">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                          <div className="text-success fw-bold">
+                            {parseFloat(formData.basics.projectFundAmount).toLocaleString()} {formData.basics.projectFundCurrency} = 
+                            <span className="ms-2 h5">{tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol}</span>
+                          </div>
+                          <small className="text-muted">
+                            {tokenPriceUSD && <>Token price: ${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD per {tokenInfo.symbol}</>}
+                          </small>
+                        </div>
+                        <span className="badge bg-info">{tokenInfo.blockchain}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {tokenInfo && !tokenEquivalent && !loadingTokenPrice && (
+                    <div className="mt-2 p-2 bg-light rounded border border-warning">
+                      <div className="d-flex">
+                        <div className="text-warning me-2">⚠️</div>
+                        <div>
+                          <div>Unable to retrieve price information for {tokenInfo.symbol}.</div>
+                          <small>Campaign will use the token for fundraising but no conversion estimate can be shown.</small>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </Form.Group>
               </Col>
               <Col md={6}>
