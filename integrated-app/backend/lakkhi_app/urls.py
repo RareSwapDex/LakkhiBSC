@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/create_campaign/', views.create_campaign, name='create_campaign'),
     path('api/campaigns/', views.campaigns, name='campaigns'),
     path('api/campaigns/<int:id>/', views.campaign_detail, name='campaign_detail'),
+    path('api/projects/<int:project_id>/update/', views.update_project, name='update_project'),
     path('api/wallet/create/', views.create_wallet, name='create_wallet'),
     path('api/campaign/<int:id>/contract', views.campaign_contract, name='campaign_contract'),
     path('api/token/<address>/price', views.token_price, name='token_price'),

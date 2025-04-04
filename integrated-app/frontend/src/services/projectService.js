@@ -39,6 +39,21 @@ export const createProject = async (projectData) => {
   }
 };
 
+// Update an existing project
+export const updateProject = async (id, projectData) => {
+  try {
+    const response = await axios.put(`${API_URL}/api/projects/${id}/update/`, projectData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating project with ID ${id}:`, error);
+    throw error;
+  }
+};
+
 // Get project contributions
 export const getProjectContributions = async (projectId) => {
   try {
@@ -87,6 +102,7 @@ export default {
   getAllProjects,
   getProjectById,
   createProject,
+  updateProject,
   getProjectContributions,
   publishProject,
   getTokenPrice,

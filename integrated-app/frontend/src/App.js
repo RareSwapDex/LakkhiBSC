@@ -33,6 +33,7 @@ function App() {
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
                 <Route path="/create-campaign" element={<CreateCampaignPage />} />
+                <Route path="/edit-campaign/:id" element={<CreateCampaignPage isEditMode={true} />} />
                 <Route path="/faq" element={<FAQPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms-of-service" element={<TermsOfServicePage />} />

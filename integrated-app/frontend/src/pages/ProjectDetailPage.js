@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { Container, Row, Col, Card, Badge, Button, Alert, ProgressBar } from 'react-bootstrap';
 import * as projectService from '../services/projectService';
 import { ProviderContext } from '../web3/ProviderContext';
@@ -11,6 +11,7 @@ const ProjectDetailPage = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
   
   useEffect(() => {
     const fetchProject = async () => {
@@ -19,6 +20,10 @@ const ProjectDetailPage = () => {
         const response = await projectService.getProjectById(id);
         if (response.success) {
           setProject(response.project);
+          // Check if current wallet address matches the project owner
+          if (account && account.toLowerCase() === response.project.wallet_address?.toLowerCase()) {
+            setIsOwner(true);
+          }
         } else {
           setError(response.message || 'Failed to fetch project');
         }
@@ -31,7 +36,7 @@ const ProjectDetailPage = () => {
     };
     
     fetchProject();
-  }, [id]);
+  }, [id, account]);
   
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -66,7 +71,14 @@ const ProjectDetailPage = () => {
     <Container className="py-5">
       <Row>
         <Col md={8}>
-          <h1 className="mb-3">{project.title}</h1>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h1>{project.title}</h1>
+            {isOwner && (
+              <Link to={`/edit-campaign/${project.id}`}>
+                <Button variant="outline-primary">Edit Campaign</Button>
+              </Link>
+            )}
+          </div>
           
           <div className="mb-4">
             <Badge bg="primary" className="me-2">{project.category}</Badge>

@@ -935,4 +935,60 @@ def export_analytics(request, campaign_id):
     # Generate export file based on format
     # This is a placeholder - real implementation would generate actual files
     
-    return Response({"status": f"Analytics exported in {format} format"}) 
+    return Response({"status": f"Analytics exported in {format} format"})
+
+
+@api_view(["PUT"])
+@permission_classes([AllowAny])
+def update_project(request, project_id):
+    """Update an existing project's details"""
+    try:
+        project = get_object_or_404(Project, id=project_id)
+        
+        # Verify wallet ownership (simple check - a more secure implementation would use signatures)
+        wallet_address = request.data.get('wallet_address')
+        if wallet_address and wallet_address.lower() != project.wallet_address.lower():
+            return Response(
+                {"success": False, "message": "Only the project owner can update this project"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Only update fields that are provided
+        if 'title' in request.data:
+            project.title = request.data['title']
+        
+        if 'description' in request.data:
+            project.description = request.data['description']
+        
+        if 'fund_amount' in request.data:
+            project.fund_amount = request.data['fund_amount']
+        
+        if 'token_address' in request.data:
+            project.token_address = request.data['token_address']
+            
+        if 'blockchain_chain' in request.data:
+            project.blockchain_chain = request.data['blockchain_chain']
+            
+        # Save the updated project
+        project.save()
+        
+        return Response({
+            "success": True,
+            "message": "Project updated successfully",
+            "project": {
+                "id": project.id,
+                "title": project.title,
+                "description": project.description,
+                "fund_amount": project.fund_amount,
+                "token_address": project.token_address,
+                "blockchain_chain": project.blockchain_chain,
+                "wallet_address": project.wallet_address,
+                "status": project.status
+            }
+        })
+            
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ) 
