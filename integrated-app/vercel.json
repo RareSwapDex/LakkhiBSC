@@ -41,8 +41,8 @@
     ],
     "env": {
         "DJANGO_SETTINGS_MODULE": "lakkhi.settings_prod",
-        "ALLOWED_HOSTS": ".vercel.app,localhost,127.0.0.1",
-        "CORS_ALLOWED_ORIGINS": "https://frontend-kt9p8w67a-ryanratbitscoms-projects.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
+        "ALLOWED_HOSTS": ".vercel.app",
+        "CORS_ALLOW_ALL_ORIGINS": "True",
         "DATABASE_URL": "sqlite://:memory:",
         "BSC_RPC_URL": "https://bsc-dataseed1.binance.org/"
     }
