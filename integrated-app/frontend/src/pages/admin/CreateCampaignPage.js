@@ -218,9 +218,14 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
       const formData = new FormData();
       formData.append('title', formValues.title);
       formData.append('description', formValues.description);
-      formData.append('fund_amount', formValues.funding);
-      formData.append('token_address', formValues.tokenAddress);
-      formData.append('blockchain_chain', formValues.blockchain);
+      
+      // Only include these fields if not in edit mode
+      if (!isEditMode) {
+        formData.append('fund_amount', formValues.funding);
+        formData.append('token_address', formValues.tokenAddress);
+        formData.append('blockchain_chain', formValues.blockchain);
+      }
+      
       formData.append('wallet_address', account);
       
       let response;
@@ -305,7 +310,12 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
                       required
                       placeholder="Enter the amount in USD"
                       min="1"
+                      disabled={isEditMode}
+                      readOnly={isEditMode}
                     />
+                    {isEditMode && (
+                      <small className="text-muted">Funding goal cannot be changed after campaign creation.</small>
+                    )}
                   </Form.Group>
                   
                   <Form.Group className="mb-4">
@@ -314,24 +324,40 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
                       name="blockchain"
                       value={formValues.blockchain}
                       onChange={handleBlockchainChange}
+                      disabled={isEditMode}
                     >
                       <option value="BSC">Binance Smart Chain (BSC)</option>
                       <option value="Ethereum">Ethereum</option>
                       <option value="Base">Base</option>
                     </Form.Select>
+                    {isEditMode && (
+                      <small className="text-muted">Blockchain network cannot be changed after campaign creation.</small>
+                    )}
                   </Form.Group>
                   
                   <Form.Group className="mb-4">
                     <Form.Label>Token Address</Form.Label>
-                    <TokenSelector
-                      value={formValues.tokenAddress}
-                      onChange={handleTokenChange}
-                      onValidate={setTokenValid}
-                      blockchain={formValues.blockchain}
-                    />
-                    {validatingToken && <div className="mt-2"><Spinner size="sm" animation="border" /> Validating token...</div>}
-                    {tokenError && <div className="text-danger mt-2">{tokenError}</div>}
-                    {tokenValid && tokenData && (
+                    {isEditMode ? (
+                      <>
+                        <Form.Control
+                          type="text"
+                          value={formValues.tokenAddress}
+                          disabled
+                          readOnly
+                        />
+                        <small className="text-muted">Token address cannot be changed after campaign creation.</small>
+                      </>
+                    ) : (
+                      <TokenSelector
+                        value={formValues.tokenAddress}
+                        onChange={handleTokenChange}
+                        onValidate={setTokenValid}
+                        blockchain={formValues.blockchain}
+                      />
+                    )}
+                    {validatingToken && !isEditMode && <div className="mt-2"><Spinner size="sm" animation="border" /> Validating token...</div>}
+                    {tokenError && !isEditMode && <div className="text-danger mt-2">{tokenError}</div>}
+                    {tokenValid && tokenData && !isEditMode && (
                       <div className="mt-2 text-success">
                         <div>✅ Valid token: {tokenData.name} ({tokenData.symbol})</div>
                         <div>Decimals: {tokenData.decimals}</div>

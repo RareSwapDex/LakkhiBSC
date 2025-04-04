@@ -953,21 +953,13 @@ def update_project(request, project_id):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Only update fields that are provided
+        # Only update fields that are provided and allowed to be updated
+        # Core token fields (fund_amount, token_address, blockchain_chain) cannot be updated
         if 'title' in request.data:
             project.title = request.data['title']
         
         if 'description' in request.data:
             project.description = request.data['description']
-        
-        if 'fund_amount' in request.data:
-            project.fund_amount = request.data['fund_amount']
-        
-        if 'token_address' in request.data:
-            project.token_address = request.data['token_address']
-            
-        if 'blockchain_chain' in request.data:
-            project.blockchain_chain = request.data['blockchain_chain']
             
         # Save the updated project
         project.save()
