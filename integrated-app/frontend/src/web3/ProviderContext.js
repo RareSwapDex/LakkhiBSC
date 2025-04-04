@@ -12,6 +12,7 @@ export const ProviderContext = createContext({
   connectWallet: () => {},
   disconnectWallet: () => {},
   donateToProject: async () => {},
+  switchChain: async () => {},
 });
 
 // Hook to use the provider context
@@ -214,6 +215,87 @@ export const ProviderContextProvider = ({ children }) => {
     setIsConnected(false);
   };
   
+  // Switch chain function
+  const switchChain = async (targetChainId) => {
+    if (!provider || !isConnected) {
+      throw new Error('Wallet not connected. Please connect your wallet first.');
+    }
+    
+    try {
+      await provider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainId }],
+      });
+      
+      // The chain changed event should update our chainId
+      return true;
+    } catch (error) {
+      // This error code indicates that the chain has not been added to MetaMask.
+      if (error.code === 4902 || error.message.includes('wallet_addEthereumChain')) {
+        try {
+          // Add the chain based on chainId
+          const chainConfig = getChainConfig(targetChainId);
+          if (chainConfig) {
+            await provider.request({
+              method: 'wallet_addEthereumChain',
+              params: [chainConfig],
+            });
+            return true;
+          } else {
+            throw new Error(`Unknown chain ID: ${targetChainId}`);
+          }
+        } catch (addError) {
+          console.error('Error adding chain:', addError);
+          throw addError;
+        }
+      }
+      
+      console.error('Error switching chain:', error);
+      throw error;
+    }
+  };
+  
+  // Helper function to get chain configuration
+  const getChainConfig = (chainId) => {
+    const chains = {
+      '0x1': {
+        chainId: '0x1',
+        chainName: 'Ethereum Mainnet',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18
+        },
+        rpcUrls: ['https://mainnet.infura.io/v3/'],
+        blockExplorerUrls: ['https://etherscan.io']
+      },
+      '0x38': {
+        chainId: '0x38',
+        chainName: 'Binance Smart Chain',
+        nativeCurrency: {
+          name: 'BNB',
+          symbol: 'BNB',
+          decimals: 18
+        },
+        rpcUrls: ['https://bsc-dataseed.binance.org/'],
+        blockExplorerUrls: ['https://bscscan.com']
+      },
+      '0x8453': {
+        chainId: '0x8453',
+        chainName: 'Base Mainnet',
+        nativeCurrency: {
+          name: 'Ether',
+          symbol: 'ETH',
+          decimals: 18
+        },
+        rpcUrls: ['https://mainnet.base.org'],
+        blockExplorerUrls: ['https://basescan.org']
+      }
+    };
+    
+    return chains[chainId];
+  };
+  
   // Donate to a project - This follows RareFnd's pattern
   const donateToProject = async (contractAddress, amount) => {
     if (!web3 || !account) {
@@ -259,6 +341,7 @@ export const ProviderContextProvider = ({ children }) => {
     connectWallet,
     disconnectWallet,
     donateToProject,
+    switchChain,
   };
 
   return (

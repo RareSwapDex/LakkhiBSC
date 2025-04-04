@@ -9,7 +9,7 @@ import Web3 from 'web3';
 
 const CreateCampaignPage = () => {
   const navigate = useNavigate();
-  const { provider, isConnected, account } = useContext(ProviderContext);
+  const { provider, isConnected, account, chainId, switchChain } = useContext(ProviderContext);
   
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -17,6 +17,7 @@ const CreateCampaignPage = () => {
   const [includeIncentives, setIncludeIncentives] = useState(false);
   const [connectedWallet, setConnectedWallet] = useState('');
   const [isWalletVerified, setIsWalletVerified] = useState(false);
+  const [isSwitchingChain, setIsSwitchingChain] = useState(false);
   
   // Token validation state
   const [validatingToken, setValidatingToken] = useState(false);
@@ -435,6 +436,32 @@ const CreateCampaignPage = () => {
     }));
   };
   
+  // Check if current chain matches token's blockchain
+  const validateChainMatch = () => {
+    if (!tokenInfo || !tokenInfo.blockchain) {
+      setError('Token blockchain information is missing');
+      return false;
+    }
+
+    // Get current chain ID from context
+    const currentChainName = (() => {
+      if (chainId) {
+        if (chainId === '0x1') return 'Ethereum';
+        if (chainId === '0x38') return 'BSC';
+        if (chainId === '0x8453') return 'Base';
+      }
+      return null;
+    })();
+
+    if (!currentChainName) {
+      setError('Unable to determine current network. Please ensure your wallet is connected.');
+      return false;
+    }
+
+    // Check if current chain matches the token's blockchain
+    return currentChainName === tokenInfo.blockchain;
+  };
+  
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -460,6 +487,12 @@ const CreateCampaignPage = () => {
     // Verify token is validated
     if (!tokenInfo) {
       setError('Please validate your token address before submitting. Click the Validate button next to the token address field.');
+      return;
+    }
+    
+    // Check if the wallet's chain matches the token's blockchain
+    if (!validateChainMatch()) {
+      setError(`Your wallet must be on the ${tokenInfo.blockchain} network to create this campaign. Please switch networks.`);
       return;
     }
     
@@ -996,6 +1029,93 @@ const CreateCampaignPage = () => {
     calculateTokenEquivalent();
   }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency]);
   
+  // Function to get chain ID from blockchain name
+  const getChainIdFromBlockchain = (blockchain) => {
+    if (blockchain === 'BSC') return '0x38';
+    if (blockchain === 'Ethereum') return '0x1';
+    if (blockchain === 'Base') return '0x8453';
+    return null;
+  };
+
+  // Function to switch networks in MetaMask
+  const changeBlockchainNetwork = async (targetBlockchain) => {
+    try {
+      setIsSwitchingChain(true);
+      setError(`Switching to ${targetBlockchain} network. Please confirm in your wallet...`);
+      
+      const targetChainId = getChainIdFromBlockchain(targetBlockchain);
+      if (!targetChainId) {
+        throw new Error(`Unknown blockchain: ${targetBlockchain}`);
+      }
+      
+      await switchChain(targetChainId);
+      
+      setError(`Successfully switched to ${targetBlockchain} network. You can now create your campaign.`);
+      return true;
+    } catch (error) {
+      console.error('Error switching network:', error);
+      setError(`Failed to switch network: ${error.message}`);
+      return false;
+    } finally {
+      setIsSwitchingChain(false);
+    }
+  };
+  
+  // Add network mismatch alert function
+  const renderNetworkAlert = () => {
+    // Only show if token is validated and there's a blockchain mismatch
+    if (tokenInfo && tokenInfo.blockchain) {
+      // Check if we can determine the current chain
+      const currentChainName = (() => {
+        if (chainId) {
+          if (chainId === '0x1') return 'Ethereum';
+          if (chainId === '0x38') return 'BSC';
+          if (chainId === '0x8453') return 'Base';
+        }
+        return null;
+      })();
+
+      // If we can't determine the chain or if it matches, don't show alert
+      if (!currentChainName || currentChainName === tokenInfo.blockchain) {
+        return null;
+      }
+
+      return (
+        <Alert variant="danger" className="mt-2 mb-3">
+          <Alert.Heading>⚠️ Network Mismatch Detected</Alert.Heading>
+          <p>
+            Your wallet is connected to <strong>{currentChainName}</strong> but your token 
+            <strong> {tokenInfo.symbol} </strong> is on <strong>{tokenInfo.blockchain}</strong>.
+          </p>
+          <p className="mb-0 fw-bold">
+            You MUST switch to the {tokenInfo.blockchain} network before creating this campaign.
+          </p>
+          <hr />
+          <div className="d-grid">
+            <Button 
+              variant="primary" 
+              size="lg"
+              onClick={() => changeBlockchainNetwork(tokenInfo.blockchain)}
+              disabled={isSwitchingChain}
+              className="mt-2"
+            >
+              {isSwitchingChain ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-2" />
+                  Switching to {tokenInfo.blockchain}...
+                </>
+              ) : (
+                `Switch to ${tokenInfo.blockchain} Network`
+              )}
+            </Button>
+          </div>
+        </Alert>
+      );
+    }
+    
+    return null;
+  };
+  
   if (submitting) {
     return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
   }
@@ -1032,6 +1152,8 @@ const CreateCampaignPage = () => {
       </Card>
       
       {renderWalletAlert()}
+      
+      {renderNetworkAlert()}
       
       {error && <Alert variant="danger">{error}</Alert>}
       
