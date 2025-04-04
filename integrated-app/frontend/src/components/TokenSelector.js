@@ -59,28 +59,29 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
     
     try {
       // Frontend validation for proper address format
-      if (!tokenAddress.startsWith('0x') || tokenAddress.length !== 42) {
-        throw new Error('Invalid token address format. Must be a valid BSC address.');
+      if (!tokenAddress.startsWith('0x') && tokenAddress.length !== 42) {
+        throw new Error('Invalid token address format. Must be a valid address starting with 0x.');
       }
 
-      // Define RPC endpoints for different blockchains
+      // Define free and reliable RPC endpoints for different blockchains
       const blockchainRpcs = {
         BSC: [
-          'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3',
-          'https://rpc.ankr.com/bsc',
-          'https://binance.nodereal.io',
-          'https://bsc-mainnet.public.blastapi.io',
-          'https://bsc-dataseed1.defibit.io/'
+          'https://bsc-dataseed1.binance.org/',
+          'https://bsc-dataseed2.binance.org/',
+          'https://bsc-dataseed3.binance.org/',
+          'https://bsc-dataseed4.binance.org/',
+          'https://binance.llamarpc.com'
         ],
         Ethereum: [
-          'https://eth-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3',
+          'https://eth.llamarpc.com',
+          'https://ethereum.publicnode.com',
           'https://rpc.ankr.com/eth',
-          'https://eth-mainnet.public.blastapi.io'
+          'https://eth.meowrpc.com'
         ],
         Base: [
           'https://mainnet.base.org',
-          'https://base-mainnet.public.blastapi.io',
-          'https://base.blockpi.network/v1/rpc/public'
+          'https://base.llamarpc.com',
+          'https://base.publicnode.com'
         ]
       };
       
@@ -94,30 +95,35 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       // First try using the connected wallet's provider if available
       if (window.ethereum) {
         try {
-            web3 = new Web3(window.ethereum);
+          console.log('Trying to use wallet provider for token detection');
+          web3 = new Web3(window.ethereum);
           await web3.eth.net.isListening();
           
-          // Try to get the address and code using wallet provider
-          checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
-          tokenContractCode = await web3.eth.getCode(checksumAddress);
-          
-          if (tokenContractCode && tokenContractCode !== '0x' && tokenContractCode !== '0x0') {
-            // Determine which network the wallet is connected to
-            const chainId = await web3.eth.getChainId();
+          try {
+            // Try to get the address and code using wallet provider
+            checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
+            tokenContractCode = await web3.eth.getCode(checksumAddress);
             
-            // Map chainId to our chains
-            if (chainId === 56) {
-              detectedChain = 'BSC';
-            } else if (chainId === 1) {
-              detectedChain = 'Ethereum';
-            } else if (chainId === 8453) {
-              detectedChain = 'Base';
-          } else {
-              // Default to BSC if we can't determine
-              detectedChain = 'BSC';
+            if (tokenContractCode && tokenContractCode !== '0x' && tokenContractCode !== '0x0') {
+              // Determine which network the wallet is connected to
+              const chainId = await web3.eth.getChainId();
+              
+              // Map chainId to our chains
+              if (chainId === 56) {
+                detectedChain = 'BSC';
+              } else if (chainId === 1) {
+                detectedChain = 'Ethereum';
+              } else if (chainId === 8453) {
+                detectedChain = 'Base';
+              } else {
+                // Default to BSC if we can't determine
+                detectedChain = 'BSC';
+              }
+              
+              console.log(`Using wallet connection - detected chain: ${detectedChain}`);
             }
-            
-            console.log(`Using wallet connection - detected chain: ${detectedChain}`);
+          } catch (addressError) {
+            console.warn('Failed to check address with wallet provider:', addressError);
           }
         } catch (walletError) {
           console.warn('Wallet connection failed, will try RPC endpoints:', walletError);
@@ -127,46 +133,109 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       
       // If wallet check didn't give us a result, try each chain's RPC endpoints
       if (!detectedChain) {
-        for (const chain of chainOrder) {
-          const rpcUrls = blockchainRpcs[chain];
-          
-          for (const rpcUrl of rpcUrls) {
-            try {
-              const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl, {
-                timeout: 5000,
-                headers: [{ name: 'Access-Control-Allow-Origin', value: '*' }]
-              }));
-              
-              await tempWeb3.eth.net.isListening();
-              
-              const tempChecksumAddress = tempWeb3.utils.toChecksumAddress(tokenAddress);
-              const code = await tempWeb3.eth.getCode(tempChecksumAddress);
-              
-              if (code && code !== '0x' && code !== '0x0') {
-                web3 = tempWeb3;
-                checksumAddress = tempChecksumAddress;
-                tokenContractCode = code;
-                detectedChain = chain;
-                console.log(`Contract found on ${chain} using ${rpcUrl}`);
-                break;
-              }
-            } catch (error) {
-              console.warn(`Failed to check token on ${chain} using ${rpcUrl}:`, error);
+        console.log('Trying RPC endpoints for token detection');
+        
+        // First, try checking if this might be an Ethereum address
+        if (tokenAddress.startsWith('0x')) {
+          // Try loading infura.io data directly
+          try {
+            console.log('Trying to get token data from Etherscan API');
+            const etherscanResponse = await fetch(`https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${tokenAddress}&apikey=YourAPI`);
+            const etherscanData = await etherscanResponse.json();
+            
+            if (etherscanData.status === '1' && etherscanData.result && etherscanData.result[0].ContractName) {
+              console.log('Found contract on Ethereum via Etherscan:', etherscanData.result[0].ContractName);
+              detectedChain = 'Ethereum';
             }
+          } catch (etherscanError) {
+            console.warn('Etherscan API check failed:', etherscanError);
           }
-          
-          if (detectedChain) break;
+        }
+        
+        // If we still don't know, check each chain
+        if (!detectedChain) {
+          for (const chain of chainOrder) {
+            const rpcUrls = blockchainRpcs[chain];
+            
+            for (const rpcUrl of rpcUrls) {
+              try {
+                console.log(`Trying ${chain} via ${rpcUrl}`);
+                const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
+                
+                try {
+                  await tempWeb3.eth.net.isListening();
+                } catch (netError) {
+                  console.warn(`RPC ${rpcUrl} not responding:`, netError);
+                  continue; // Try next RPC
+                }
+                
+                try {
+                  const tempChecksumAddress = tempWeb3.utils.toChecksumAddress(tokenAddress);
+                  const code = await tempWeb3.eth.getCode(tempChecksumAddress);
+                  
+                  if (code && code !== '0x' && code !== '0x0') {
+                    web3 = tempWeb3;
+                    checksumAddress = tempChecksumAddress;
+                    tokenContractCode = code;
+                    detectedChain = chain;
+                    console.log(`Contract found on ${chain} using ${rpcUrl}`);
+                    break;
+                  }
+                } catch (addressError) {
+                  console.warn(`Failed to validate address on ${chain}:`, addressError);
+                }
+              } catch (error) {
+                console.warn(`Failed to check token on ${chain} using ${rpcUrl}:`, error);
+              }
+            }
+            
+            if (detectedChain) break;
+          }
         }
       }
       
-      // If we still couldn't detect the chain, default to BSC
+      // If we still couldn't detect the chain, try to guess from the address format
       if (!detectedChain) {
-        detectedChain = 'BSC';
-        console.log('Could not detect chain, defaulting to BSC');
+        console.log('Could not detect chain from RPCs, trying to infer from address');
+        
+        if (tokenAddress.startsWith('0x')) {
+          // Try to fetch token from the API directly
+          try {
+            const apiUrl = `${process.env.REACT_APP_BASE_URL}/api/token/validate/`;
+            const response = await axios.post(apiUrl, { token_address: tokenAddress });
+            
+            if (response.data && response.data.success) {
+              console.log('Token validated via API:', response.data);
+              setTokenInfo({
+                name: response.data.token_info.name,
+                symbol: response.data.token_info.symbol,
+                decimals: response.data.token_info.decimals,
+                address: tokenAddress,
+                blockchain: response.data.token_info.blockchain || 'BSC'
+              });
+              return;
+            }
+          } catch (apiError) {
+            console.warn('API validation failed:', apiError);
+          }
+          
+          // Default to Ethereum for 0x addresses if nothing else worked
+          detectedChain = 'Ethereum';
+        } else {
+          // Non-0x addresses might be Solana or other chains (not handled in this component)
+          throw new Error('Unsupported token format. Currently only Ethereum, BSC, and Base tokens are supported.');
+        }
       }
       
-      if (!web3 || !checksumAddress || !tokenContractCode || tokenContractCode === '0x' || tokenContractCode === '0x0') {
-        throw new Error('Unable to validate token. Please check the address and try again.');
+      if (!web3) {
+        // Create a final web3 instance for the detected chain
+        const rpcUrl = blockchainRpcs[detectedChain][0];
+        web3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
+        
+        // Ensure we have a checksumAddress
+        if (!checksumAddress) {
+          checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
+        }
       }
       
       // Standard ERC20 ABI

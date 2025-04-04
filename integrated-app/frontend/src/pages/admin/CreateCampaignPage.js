@@ -848,28 +848,277 @@ const CreateCampaignPage = () => {
     }
   };
   
-  // Add a function to calculate price using PancakeSwap router for BSC tokens
-  const getTokenPriceFromDex = async (tokenAddress) => {
+  // New function to get token prices without CORS issues
+  const getTokenPriceWithoutCORS = async (tokenAddress, tokenSymbol, blockchain) => {
     try {
-      if (!tokenAddress) return null;
+      console.log(`Attempting to get price for ${tokenSymbol} (${tokenAddress}) on ${blockchain}`);
       
-      // Initialize Web3 with a provider - try user's wallet first, fallback to RPC
-      let web3;
-      if (window.ethereum) {
-        web3 = new Web3(window.ethereum);
-      } else {
-        // Use BSC RPC endpoint
-        web3 = new Web3(new Web3.providers.HttpProvider('https://bsc-dataseed.binance.org/'));
+      // Try on-chain price first (most accurate for the specific blockchain)
+      if (blockchain === 'BSC' || blockchain === 'Ethereum') {
+        try {
+          console.log(`Attempting to get price from ${blockchain} blockchain directly...`);
+          const dexPrice = await getTokenPriceFromDex(tokenAddress, blockchain);
+          if (dexPrice && dexPrice > 0) {
+            console.log(`Successfully got price from DEX: ${dexPrice}`);
+            return dexPrice;
+          }
+        } catch (dexError) {
+          console.warn('DEX price lookup failed:', dexError);
+        }
       }
       
-      // PancakeSwap Router Address
+      // Try our backend API with proper CORS headers
+      try {
+        console.log('Attempting to get price from backend API...');
+        // Use axios with credentials and full URL
+        const response = await axios.get(
+          `${process.env.REACT_APP_BASE_URL}/api/token/price/?token_address=${tokenAddress}&blockchain=${blockchain}`,
+          { 
+            withCredentials: true,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (response.data && response.data.success && response.data.price_usd) {
+          console.log(`Successfully got price from backend API: ${response.data.price_usd}`);
+          return parseFloat(response.data.price_usd);
+        }
+      } catch (apiError) {
+        console.warn('Backend API price fallback failed:', apiError.message);
+      }
+      
+      // Try CoinGecko public API directly 
+      try {
+        console.log('Attempting to get price from CoinGecko...');
+        // Convert blockchain name to CoinGecko network ID
+        const network = blockchain === 'Ethereum' ? 'ethereum' : 
+                         blockchain === 'BSC' ? 'binance-smart-chain' : 'ethereum';
+        
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/simple/token_price/${network}?contract_addresses=${tokenAddress}&vs_currencies=usd`
+        );
+        const data = await response.json();
+        
+        if (data && data[tokenAddress.toLowerCase()] && data[tokenAddress.toLowerCase()].usd) {
+          const price = data[tokenAddress.toLowerCase()].usd;
+          console.log(`Successfully got price from CoinGecko: ${price}`);
+          return price;
+        }
+      } catch (coinGeckoError) {
+        console.warn('CoinGecko API lookup failed:', coinGeckoError);
+      }
+      
+      // If all attempts fail, return null to indicate failure
+      console.warn(`Could not retrieve price data for ${tokenSymbol}`);
+      return null;
+    } catch (error) {
+      console.error('Error getting token price:', error);
+      return null;
+    }
+  };
+  
+  // Helper function to get CoinGecko network ID
+  const getNetworkForCoinGecko = (blockchain) => {
+    switch (blockchain) {
+      case 'Ethereum':
+        return 'ethereum';
+      case 'BSC':
+        return 'binance-smart-chain';
+      case 'Base':
+        return 'base';
+      default:
+        return 'ethereum';
+    }
+  };
+  
+  // Replace the useEffect for token price calculation
+  useEffect(() => {
+    const calculateTokenEquivalent = async () => {
+      if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
+        try {
+          setLoadingTokenPrice(true);
+          
+          const price = await getTokenPriceWithoutCORS(
+            tokenInfo.address, 
+            tokenInfo.symbol,
+            formData.basics.blockchainChain
+          );
+          
+          if (price && price > 0) {
+            setTokenPriceUSD(price);
+            const fundAmount = parseFloat(formData.basics.projectFundAmount);
+            
+            if (!isNaN(fundAmount)) {
+              const equivalent = fundAmount / price;
+              setTokenEquivalent(equivalent);
+            } else {
+              setTokenEquivalent(null);
+            }
+          } else {
+            // Price lookup failed
+            setTokenPriceUSD(null);
+            setTokenEquivalent(null);
+          }
+        } catch (error) {
+          console.error('Error calculating token equivalent:', error);
+          setTokenPriceUSD(null);
+          setTokenEquivalent(null);
+        } finally {
+          setLoadingTokenPrice(false);
+        }
+      } else {
+        setTokenPriceUSD(null);
+        setTokenEquivalent(null);
+      }
+    };
+    
+    calculateTokenEquivalent();
+  }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency, formData.basics.blockchainChain]);
+  
+  // Improve the PancakeSwap router for BSC tokens - ensure the correct pairs are used
+  const getTokenPriceFromDex = async (tokenAddress, blockchain) => {
+    if (blockchain === 'Ethereum') {
+      return await getEthereumTokenPrice(tokenAddress);
+    } else if (blockchain === 'BSC') {
+      return await getBscTokenPrice(tokenAddress);
+    } else if (blockchain === 'Base') {
+      return await getBaseTokenPrice(tokenAddress);
+    } else {
+      console.warn(`Unsupported blockchain for price lookup: ${blockchain}`);
+      return null;
+    }
+  };
+  
+  // Function to get Ethereum token prices
+  const getEthereumTokenPrice = async (tokenAddress) => {
+    try {
+      console.log('Using Ethereum token price lookup for', tokenAddress);
+      
+      // Use a reliable Ethereum RPC
+      const RPC_URL = 'https://eth.llamarpc.com';
+      const web3 = new Web3(new Web3.providers.HttpProvider(RPC_URL));
+      
+      // WETH Address on Ethereum
+      const WETH_ADDRESS = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
+      
+      // USDC Address on Ethereum
+      const USDC_ADDRESS = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+      
+      // Token ABI (minimal for decimals)
+      const tokenAbi = [
+        {
+          "inputs": [],
+          "name": "decimals",
+          "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "symbol",
+          "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ];
+      
+      // Get token info
+      const tokenContract = new web3.eth.Contract(tokenAbi, tokenAddress);
+      let decimals, symbol;
+      
+      try {
+        decimals = await tokenContract.methods.decimals().call();
+        symbol = await tokenContract.methods.symbol().call();
+        console.log(`Token symbol: ${symbol}, decimals: ${decimals}`);
+      } catch (error) {
+        console.warn('Error getting token info, using defaults:', error);
+        decimals = 18;
+      }
+      
+      // Try to get price from CoinGecko by contract address
+      try {
+        console.log('Trying CoinGecko direct contract lookup');
+        const response = await fetch(`https://api.coingecko.com/api/v3/coins/ethereum/contract/${tokenAddress}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.market_data && data.market_data.current_price && data.market_data.current_price.usd) {
+            console.log(`Found price from CoinGecko: ${data.market_data.current_price.usd}`);
+            return data.market_data.current_price.usd;
+          }
+        }
+      } catch (cgError) {
+        console.warn('CoinGecko contract lookup failed:', cgError);
+      }
+      
+      // Try to use a public API like Ethplorer
+      try {
+        console.log('Trying Ethplorer API');
+        const response = await fetch(`https://api.ethplorer.io/getTokenInfo/${tokenAddress}?apiKey=freekey`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.price && data.price.rate) {
+            console.log(`Found price from Ethplorer: ${data.price.rate}`);
+            return data.price.rate;
+          }
+        }
+      } catch (ethplorerError) {
+        console.warn('Ethplorer lookup failed:', ethplorerError);
+      }
+      
+      // Try 1inch quote API
+      try {
+        console.log('Trying 1inch API');
+        // Amount for 1 token with proper decimals
+        const amountIn = web3.utils.toBN(10).pow(web3.utils.toBN(decimals)).toString();
+        
+        const response = await fetch(`https://api.1inch.io/v5.0/1/quote?fromTokenAddress=${tokenAddress}&toTokenAddress=${USDC_ADDRESS}&amount=${amountIn}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.toTokenAmount) {
+            // USDC has 6 decimals
+            const price = data.toTokenAmount / Math.pow(10, 6) / (amountIn / Math.pow(10, decimals));
+            console.log(`Found price from 1inch: ${price}`);
+            return price;
+          }
+        }
+      } catch (inchError) {
+        console.warn('1inch API lookup failed:', inchError);
+      }
+      
+      console.log('All Ethereum price lookup methods failed');
+      return null;
+    } catch (error) {
+      console.error('Error in getEthereumTokenPrice:', error);
+      return null;
+    }
+  };
+  
+  // Function to get BSC token prices using PancakeSwap
+  const getBscTokenPrice = async (tokenAddress) => {
+    try {
+      console.log('Using BSC/PancakeSwap token price lookup for', tokenAddress);
+      
+      // Use BSC RPC endpoint that's more reliable and public
+      const RPC_URL = 'https://bsc-dataseed1.binance.org/';
+      const web3 = new Web3(new Web3.providers.HttpProvider(RPC_URL));
+      
+      // PancakeSwap Router Address (v2)
       const PANCAKE_ROUTER_ADDRESS = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
       
-      // BNB/WBNB token address (used as base pair)
+      // BNB/WBNB token address
       const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
       
-      // BUSD token address (for price in USD equivalent)
+      // BUSD token address
       const BUSD_ADDRESS = '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56';
+      
+      // USDT token address
+      const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
       
       // Router ABI (minimal for price checking)
       const routerAbi = [
@@ -901,191 +1150,212 @@ const CreateCampaignPage = () => {
       // Initialize router contract
       const router = new web3.eth.Contract(routerAbi, PANCAKE_ROUTER_ADDRESS);
       
-      // Get token decimals
-      const tokenContract = new web3.eth.Contract(tokenAbi, tokenAddress);
-      const decimals = await tokenContract.methods.decimals().call();
+      // Get token decimals or default to 18
+      let decimals = 18;
+      try {
+        const tokenContract = new web3.eth.Contract(tokenAbi, tokenAddress);
+        decimals = await tokenContract.methods.decimals().call();
+        console.log(`Token decimals: ${decimals}`);
+      } catch (error) {
+        console.warn('Error getting token decimals, using default 18:', error);
+      }
       
       // Set amount of tokens to get price for (1 token with decimals)
       const amountIn = web3.utils.toBN(10).pow(web3.utils.toBN(decimals)).toString();
       
-      // Try to get price using token -> WBNB -> BUSD path
+      // Try token -> BUSD direct pair first (simplest)
       try {
-        const path = [tokenAddress, WBNB_ADDRESS, BUSD_ADDRESS];
-        const amounts = await router.methods.getAmountsOut(amountIn, path).call();
+        console.log('Trying direct Token->BUSD path');
+        const directPath = [tokenAddress, BUSD_ADDRESS];
+        const directAmounts = await router.methods.getAmountsOut(amountIn, directPath).call();
         
-        // Convert the output amount to USD price
         const busdDecimals = 18;  // BUSD has 18 decimals
-        const priceInBusd = amounts[2] / Math.pow(10, busdDecimals);
-        return priceInBusd;
-      } catch (error) {
-        console.warn('Error getting token price via WBNB->BUSD path:', error);
+        const priceInBusd = directAmounts[1] / Math.pow(10, busdDecimals);
         
-        // Fallback: try direct token -> BUSD path if it exists
-        try {
-          const path = [tokenAddress, BUSD_ADDRESS];
-          const amounts = await router.methods.getAmountsOut(amountIn, path).call();
-          
-          // Convert the output amount to USD price
-          const busdDecimals = 18;  // BUSD has 18 decimals
-          const priceInBusd = amounts[1] / Math.pow(10, busdDecimals);
+        if (priceInBusd > 0) {
+          console.log(`Direct price in BUSD: ${priceInBusd}`);
           return priceInBusd;
-        } catch (directError) {
-          console.warn('Error getting direct token->BUSD price:', directError);
-          return null;
         }
+      } catch (error) {
+        console.warn('Error getting direct BUSD price:', error);
       }
+      
+      // Try token -> USDT direct pair
+      try {
+        console.log('Trying direct Token->USDT path');
+        const usdtPath = [tokenAddress, USDT_ADDRESS];
+        const usdtAmounts = await router.methods.getAmountsOut(amountIn, usdtPath).call();
+        
+        const usdtDecimals = 18;  // USDT on BSC has 18 decimals
+        const priceInUsdt = usdtAmounts[1] / Math.pow(10, usdtDecimals);
+        
+        if (priceInUsdt > 0) {
+          console.log(`Direct price in USDT: ${priceInUsdt}`);
+          return priceInUsdt;
+        }
+      } catch (error) {
+        console.warn('Error getting direct USDT price:', error);
+      }
+      
+      // Try Token -> BNB -> BUSD path
+      try {
+        console.log('Trying Token->BNB->BUSD path');
+        // First get BNB/WBNB price in BUSD
+        const bnbToBusdPath = [WBNB_ADDRESS, BUSD_ADDRESS];
+        const bnbBusdAmounts = await router.methods.getAmountsOut(web3.utils.toWei('1', 'ether'), bnbToBusdPath).call();
+        const bnbPriceInBusd = bnbBusdAmounts[1] / Math.pow(10, 18);
+        console.log(`BNB price in BUSD: ${bnbPriceInBusd}`);
+        
+        // Then get token price in BNB
+        const tokenToBnbPath = [tokenAddress, WBNB_ADDRESS];
+        const tokenBnbAmounts = await router.methods.getAmountsOut(amountIn, tokenToBnbPath).call();
+        const tokenPriceInBnb = tokenBnbAmounts[1] / Math.pow(10, 18);
+        console.log(`Token price in BNB: ${tokenPriceInBnb}`);
+        
+        // Calculate token price in USD
+        const tokenPriceInUsd = tokenPriceInBnb * bnbPriceInBusd;
+        
+        if (tokenPriceInUsd > 0) {
+          console.log(`Price via BNB: ${tokenPriceInUsd}`);
+          return tokenPriceInUsd;
+        }
+      } catch (error) {
+        console.warn('Error getting price via BNB:', error);
+      }
+      
+      return null;
     } catch (error) {
-      console.error('Error in getTokenPriceFromDex:', error);
+      console.error('Error in getBscTokenPrice:', error);
       return null;
     }
   };
   
-  // New function to get token prices without CORS issues
-  const getTokenPriceWithoutCORS = async (tokenAddress, tokenSymbol, blockchain) => {
+  // Function to get Base token prices
+  const getBaseTokenPrice = async (tokenAddress) => {
     try {
-      console.log(`Attempting to get price for ${tokenSymbol} (${tokenAddress}) on ${blockchain}`);
+      console.log('Using Base token price lookup for', tokenAddress);
       
-      // Try on-chain price first (most accurate for BSC tokens)
-      if (blockchain === 'BSC' || blockchain === 'Ethereum') {
-        try {
-          console.log('Attempting to get price from blockchain directly...');
-          const dexPrice = await getTokenPriceFromDex(tokenAddress);
-          if (dexPrice && dexPrice > 0) {
-            console.log(`Successfully got price from DEX: ${dexPrice}`);
-            return dexPrice;
-          }
-        } catch (dexError) {
-          console.warn('DEX price lookup failed:', dexError);
+      // Use a reliable Base RPC
+      const RPC_URL = 'https://mainnet.base.org';
+      const web3 = new Web3(new Web3.providers.HttpProvider(RPC_URL));
+      
+      // WETH Address on Base
+      const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
+      
+      // USDC Address on Base
+      const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+      
+      // Token ABI (minimal for decimals)
+      const tokenAbi = [
+        {
+          "inputs": [],
+          "name": "decimals",
+          "outputs": [{ "internalType": "uint8", "name": "", "type": "uint8" }],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "symbol",
+          "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+          "stateMutability": "view",
+          "type": "function"
         }
+      ];
+      
+      // Get token info
+      const tokenContract = new web3.eth.Contract(tokenAbi, tokenAddress);
+      let decimals, symbol;
+      
+      try {
+        decimals = await tokenContract.methods.decimals().call();
+        symbol = await tokenContract.methods.symbol().call();
+        console.log(`Token symbol: ${symbol}, decimals: ${decimals}`);
+      } catch (error) {
+        console.warn('Error getting token info, using defaults:', error);
+        decimals = 18;
       }
       
-      // Use our backend API as fallback - this avoids CORS issues
+      // Try to get price from CoinGecko by contract address
       try {
-        console.log('Attempting to get price from backend API...');
-        const priceResponse = await projectService.getTokenPrice(tokenAddress);
-        if (priceResponse && priceResponse.success && priceResponse.price_usd) {
-          console.log(`Successfully got price from backend API: ${priceResponse.price_usd}`);
-          return parseFloat(priceResponse.price_usd);
+        console.log('Trying CoinGecko direct contract lookup');
+        const response = await fetch(`https://api.coingecko.com/api/v3/coins/base/contract/${tokenAddress}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.market_data && data.market_data.current_price && data.market_data.current_price.usd) {
+            console.log(`Found price from CoinGecko: ${data.market_data.current_price.usd}`);
+            return data.market_data.current_price.usd;
+          }
+        }
+      } catch (cgError) {
+        console.warn('CoinGecko contract lookup failed:', cgError);
+      }
+      
+      // Try to use Base token price API endpoint (when available)
+      try {
+        console.log('Trying Basescan API');
+        const response = await fetch(`https://api.basescan.org/api?module=token&action=tokeninfo&contractaddress=${tokenAddress}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.result && data.result.tokenPriceUSD) {
+            console.log(`Found price from Basescan: ${data.result.tokenPriceUSD}`);
+            return parseFloat(data.result.tokenPriceUSD);
+          }
+        }
+      } catch (baseError) {
+        console.warn('Basescan lookup failed:', baseError);
+      }
+      
+      // Try to get price from our backend API
+      try {
+        console.log('Trying backend API for Base token');
+        const response = await axios.get(
+          `${process.env.REACT_APP_BASE_URL}/api/token/price/?token_address=${tokenAddress}&blockchain=Base`,
+          { 
+            withCredentials: true,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (response.data && response.data.success && response.data.price_usd) {
+          console.log(`Successfully got price from backend API: ${response.data.price_usd}`);
+          return parseFloat(response.data.price_usd);
         }
       } catch (apiError) {
-        console.warn('Backend API price fallback failed:', apiError);
+        console.warn('Backend API for Base token failed:', apiError.message);
       }
       
-      // Try CoinGecko with direct request (no CORS proxy)
+      // Try defilama API which has good Base coverage
       try {
-        console.log('Attempting to get price from direct CoinGecko API (no proxy)...');
-        // Convert common token symbols to CoinGecko IDs
-        let coinId = tokenSymbol.toLowerCase();
-        if (tokenSymbol === 'WHY') coinId = 'whitebit';
-        if (tokenSymbol === 'CAKE') coinId = 'pancakeswap-token';
-        if (tokenSymbol === 'KILO') coinId = 'kilopi';
-        if (tokenSymbol === 'ROCKET') coinId = 'rocket-pool';
+        console.log('Trying DefiLlama API');
+        const response = await fetch(`https://coins.llama.fi/prices/current/base:${tokenAddress}`);
         
-        // Use backend or serverless function to proxy the request
-        // This URL should be your own proxy endpoint that handles CORS
-        const response = await fetch(`${process.env.REACT_APP_BASE_URL}/api/token/price?id=${coinId}`);
-        const data = await response.json();
-        
-        if (data && data.success && data.price_usd) {
-          console.log(`Successfully got price from CoinGecko: ${data.price_usd}`);
-          return parseFloat(data.price_usd);
+        if (response.ok) {
+          const data = await response.json();
+          const priceKey = `base:${tokenAddress.toLowerCase()}`;
+          
+          if (data && data.coins && data.coins[priceKey] && data.coins[priceKey].price) {
+            console.log(`Found price from DefiLlama: ${data.coins[priceKey].price}`);
+            return data.coins[priceKey].price;
+          }
         }
-      } catch (coinGeckoError) {
-        console.warn('CoinGecko direct API fallback failed:', coinGeckoError);
+      } catch (llamaError) {
+        console.warn('DefiLlama API lookup failed:', llamaError);
       }
       
-      // Use well-known token prices for common tokens as last resort
-      const wellKnownPrices = {
-        'BNB': 215.45,
-        'WHY': 0.267,
-        'CAKE': 1.75,
-        'KILO': 0.0054,
-        'ETH': 2950.80,
-        'WBNB': 215.45,
-        'SOL': 149.32,
-        'USDT': 1.0,
-        'USDC': 1.0,
-        'BUSD': 1.0,
-        'ROCKET': 0.95,
-        'DOGE': 0.12
-      };
-      
-      if (tokenSymbol && wellKnownPrices[tokenSymbol]) {
-        console.log(`Using hardcoded price for ${tokenSymbol} as last resort: ${wellKnownPrices[tokenSymbol]}`);
-        return wellKnownPrices[tokenSymbol];
-      }
-      
-      // Use an estimated price based on token name if possible
-      if (tokenSymbol.includes('DOGE') || tokenSymbol.includes('SHIB')) {
-        console.log(`Using estimated price for meme token ${tokenSymbol}: 0.05`);
-        return 0.05;
-      }
-      
-      // Final fallback: just use a default price so the UI isn't broken
-      console.log(`Using default fallback price for ${tokenSymbol}: 1.00`);
-      return 1.00;
+      // If all specialized methods fail, try to use a generic approach with the token
+      console.log('All Base price lookup methods failed');
+      return null;
     } catch (error) {
-      console.error('Error getting token price:', error);
-      // Return a default price so the UI isn't broken
-      return 1.00;
+      console.error('Error in getBaseTokenPrice:', error);
+      return null;
     }
   };
-  
-  // Replace the useEffect for token price calculation
-  useEffect(() => {
-    const calculateTokenEquivalent = async () => {
-      if (tokenInfo && formData.basics.projectFundAmount && formData.basics.projectFundCurrency === 'USD') {
-        try {
-          setLoadingTokenPrice(true);
-          
-          const price = await getTokenPriceWithoutCORS(
-            tokenInfo.address, 
-            tokenInfo.symbol,
-            formData.basics.blockchainChain
-          );
-          
-          if (price) {
-            setTokenPriceUSD(price);
-            const fundAmount = parseFloat(formData.basics.projectFundAmount);
-            
-            if (!isNaN(fundAmount) && price > 0) {
-              const equivalent = fundAmount / price;
-              setTokenEquivalent(equivalent);
-            } else {
-              setTokenEquivalent(null);
-            }
-          } else {
-            // We should never reach here with our improved getTokenPriceWithoutCORS
-            // But just in case, set a default price of 1.0
-            setTokenPriceUSD(1.0);
-            const fundAmount = parseFloat(formData.basics.projectFundAmount);
-            if (!isNaN(fundAmount)) {
-              setTokenEquivalent(fundAmount);
-            } else {
-              setTokenEquivalent(null);
-            }
-          }
-        } catch (error) {
-          console.error('Error calculating token equivalent:', error);
-          // Use default price as fallback
-          setTokenPriceUSD(1.0);
-          const fundAmount = parseFloat(formData.basics.projectFundAmount);
-          if (!isNaN(fundAmount)) {
-            setTokenEquivalent(fundAmount);
-          } else {
-            setTokenEquivalent(null);
-          }
-        } finally {
-          setLoadingTokenPrice(false);
-        }
-      } else {
-        setTokenPriceUSD(null);
-        setTokenEquivalent(null);
-      }
-    };
-    
-    calculateTokenEquivalent();
-  }, [tokenInfo, formData.basics.projectFundAmount, formData.basics.projectFundCurrency]);
   
   // Function to get chain ID from blockchain name
   const getChainIdFromBlockchain = (blockchain) => {
@@ -1352,17 +1622,17 @@ const CreateCampaignPage = () => {
                         Calculating token equivalent...
                       </Form.Text>
                     )}
-                    {tokenInfo && tokenEquivalent && !loadingTokenPrice && (
+                    {tokenInfo && tokenEquivalent && tokenPriceUSD && !loadingTokenPrice && (
                       <Form.Text className="text-muted mt-2">
                         Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
-                        {tokenPriceUSD && ` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
+                        {` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
                         <br/>
                         <span className="text-success">Chain: {formData.basics.blockchainChain}</span>
                       </Form.Text>
                     )}
-                    {tokenInfo && !tokenEquivalent && !loadingTokenPrice && (
-                      <Form.Text className="text-warning mt-2">
-                        Using estimated conversion rate for {tokenInfo.symbol}. Price data may not be exact.
+                    {tokenInfo && !tokenPriceUSD && !loadingTokenPrice && (
+                      <Form.Text className="text-danger mt-2">
+                        Unable to retrieve price information for {tokenInfo.symbol}. Token conversion cannot be calculated.
                         <br/>
                         <span className="text-success">Chain: {formData.basics.blockchainChain}</span>
                       </Form.Text>

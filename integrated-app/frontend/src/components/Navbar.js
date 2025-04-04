@@ -1,10 +1,10 @@
 import React, { useContext, useEffect } from 'react';
-import { Navbar as BootstrapNavbar, Container, Nav, Button, Badge } from 'react-bootstrap';
+import { Navbar as BootstrapNavbar, Container, Nav, Button, Badge, Spinner } from 'react-bootstrap';
 import { Link, NavLink } from 'react-router-dom';
 import { ProviderContext } from '../web3/ProviderContext';
 
 const Navbar = () => {
-  const { account, isConnected, connectWallet, disconnectWallet } = useContext(ProviderContext);
+  const { account, isConnected, isInitialized, isLoading, connectWallet, disconnectWallet } = useContext(ProviderContext);
 
   // Format the wallet address for display
   const formatAddress = (address) => {
@@ -14,13 +14,65 @@ const Navbar = () => {
 
   // Check for wallet connection on component mount
   useEffect(() => {
-    // Check localStorage for verified wallet
-    const verifiedWallet = localStorage.getItem('lakkhi_verified_wallet');
-    if (verifiedWallet && !isConnected) {
-      // Try to reconnect wallet
-      connectWallet();
+    // Only try auto-connect if wallet provider is initialized and not already connected
+    if (isInitialized && !isConnected && !isLoading) {
+      // Check localStorage for verified wallet
+      const verifiedWallet = localStorage.getItem('lakkhi_verified_wallet');
+      if (verifiedWallet) {
+        // Try to reconnect wallet
+        console.log('Auto-connecting wallet from localStorage');
+        connectWallet().catch(err => {
+          console.warn('Auto-connect failed:', err);
+        });
+      }
     }
-  }, [connectWallet, isConnected]);
+  }, [connectWallet, isConnected, isInitialized, isLoading]);
+
+  // Render the wallet connection button based on state
+  const renderWalletButton = () => {
+    if (!isInitialized) {
+      // Provider not yet initialized, show loading state
+      return (
+        <Button variant="outline-secondary" size="sm" disabled>
+          <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+          Initializing...
+        </Button>
+      );
+    }
+
+    if (isConnected && account) {
+      // Wallet connected, show address and disconnect button
+      return (
+        <div className="d-flex align-items-center">
+          <Badge bg="success" className="me-2">
+            {formatAddress(account)}
+          </Badge>
+          <Button variant="outline-danger" size="sm" onClick={disconnectWallet}>
+            Disconnect
+          </Button>
+        </div>
+      );
+    }
+
+    // Wallet not connected, show connect button (with loading state if applicable)
+    return (
+      <Button 
+        variant="primary" 
+        size="sm" 
+        onClick={connectWallet}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <>
+            <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+            Connecting...
+          </>
+        ) : (
+          'Connect Wallet'
+        )}
+      </Button>
+    );
+  };
 
   return (
     <BootstrapNavbar bg="light" expand="lg" className="mb-4">
@@ -42,20 +94,7 @@ const Navbar = () => {
             <Nav.Link as={NavLink} to="/admin">
               Admin Dashboard
             </Nav.Link>
-            {isConnected && account ? (
-              <div className="d-flex align-items-center">
-                <Badge bg="success" className="me-2">
-                  {formatAddress(account)}
-                </Badge>
-                <Button variant="outline-danger" size="sm" onClick={disconnectWallet}>
-                  Disconnect
-                </Button>
-              </div>
-            ) : (
-              <Button variant="primary" size="sm" onClick={connectWallet}>
-                Connect Wallet
-              </Button>
-            )}
+            {renderWalletButton()}
           </Nav>
         </BootstrapNavbar.Collapse>
       </Container>

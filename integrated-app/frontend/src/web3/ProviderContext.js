@@ -9,6 +9,8 @@ export const ProviderContext = createContext({
   account: null,
   chainId: null,
   isConnected: false,
+  isInitialized: false,
+  isLoading: false,
   connectWallet: () => {},
   disconnectWallet: () => {},
   donateToProject: async () => {},
@@ -72,27 +74,52 @@ export const ProviderContextProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize provider on component mount
+  // Initialize provider on component mount - with optimizations
   useEffect(() => {
+    let mounted = true;
+    
+    // Define detection in a non-blocking way
     const initProvider = async () => {
-      console.log('Initializing Web3 provider...');
-      // Use window.ethereum directly first as a faster check
-      let detectedProvider = window.ethereum;
-      
-      // If not found directly, use detectEthereumProvider as fallback
-      if (!detectedProvider) {
-        console.log('window.ethereum not found directly, using detectEthereumProvider...');
-        try {
-          detectedProvider = await detectEthereumProvider({ mustBeMetaMask: false });
-        } catch (error) {
-          console.error('Error detecting provider:', error);
+      try {
+        // Fast path: Check for window.ethereum immediately
+        if (window.ethereum) {
+          if (!mounted) return;
+          console.log('Provider detected: window.ethereum');
+          setupProvider(window.ethereum);
+          return;
+        }
+        
+        // Fallback path: Use detectEthereumProvider (slower but more thorough)
+        console.log('Using detectEthereumProvider as fallback...');
+        const detectedProvider = await detectEthereumProvider({ 
+          mustBeMetaMask: false,
+          timeout: 3000 // Timeout after 3 seconds to prevent long waits
+        });
+        
+        if (!mounted) return;
+        
+        if (detectedProvider) {
+          console.log('Provider detected via detectEthereumProvider');
+          setupProvider(detectedProvider);
+        } else {
+          console.log('No Ethereum provider detected');
+          setIsInitialized(true); // Mark as initialized even if no provider
+        }
+      } catch (error) {
+        console.error('Error during provider initialization:', error);
+        if (mounted) {
+          setIsInitialized(true); // Mark as initialized even on error
         }
       }
-      
-      if (detectedProvider) {
-        console.log('Provider detected:', detectedProvider);
-        // Set up event listeners for MetaMask
+    };
+    
+    // Setup provider with event listeners and initial state
+    const setupProvider = async (detectedProvider) => {
+      try {
+        // Set up event listeners
         detectedProvider.on('accountsChanged', handleAccountsChanged);
         detectedProvider.on('chainChanged', handleChainChanged);
         detectedProvider.on('connect', handleConnect);
@@ -103,35 +130,59 @@ export const ProviderContextProvider = ({ children }) => {
         setWeb3(web3Instance);
         setProvider(detectedProvider);
         
-        // Check if already connected
+        // Check for existing connection - use non-blocking pattern
         try {
-          const accounts = await detectedProvider.request({ method: 'eth_accounts' });
-          console.log('Found accounts:', accounts);
+          // Use eth_accounts which doesn't trigger a popup
+          const accounts = await detectedProvider.request({ 
+            method: 'eth_accounts',
+            // Adding a short timeout to prevent hanging
+            timeout: 2000
+          });
+          
+          if (!mounted) return;
+          
           if (accounts && accounts.length > 0) {
             setAccount(accounts[0]);
             setIsConnected(true);
             
             // Get chainId
-            const chainId = await detectedProvider.request({ method: 'eth_chainId' });
-            setChainId(chainId);
+            try {
+              const chainId = await detectedProvider.request({ method: 'eth_chainId' });
+              if (mounted) setChainId(chainId);
+            } catch (chainError) {
+              console.warn('Error getting chainId:', chainError);
+            }
           }
-        } catch (error) {
-          console.error('Error checking accounts:', error);
+        } catch (accountsError) {
+          console.warn('Error checking accounts:', accountsError);
         }
-      } else {
-        console.log('No Ethereum provider detected. Please install MetaMask!');
+        
+        if (mounted) {
+          setIsInitialized(true);
+        }
+      } catch (error) {
+        console.error('Error setting up provider:', error);
+        if (mounted) {
+          setIsInitialized(true);
+        }
       }
     };
     
+    // Start initialization
     initProvider();
     
     // Clean up event listeners on unmount
     return () => {
+      mounted = false;
       if (provider) {
-        provider.removeListener('accountsChanged', handleAccountsChanged);
-        provider.removeListener('chainChanged', handleChainChanged);
-        provider.removeListener('connect', handleConnect);
-        provider.removeListener('disconnect', handleDisconnect);
+        try {
+          provider.removeListener('accountsChanged', handleAccountsChanged);
+          provider.removeListener('chainChanged', handleChainChanged);
+          provider.removeListener('connect', handleConnect);
+          provider.removeListener('disconnect', handleDisconnect);
+        } catch (error) {
+          console.warn('Error removing event listeners:', error);
+        }
       }
     };
   }, []);
@@ -152,7 +203,9 @@ export const ProviderContextProvider = ({ children }) => {
   // Handle chain change
   const handleChainChanged = (chainId) => {
     setChainId(chainId);
-    window.location.reload(); // Recommended by MetaMask
+    // Don't reload the page, just update the state
+    // This improves UX by avoiding a full reload
+    // window.location.reload();
   };
 
   // Handle connect event
@@ -166,8 +219,11 @@ export const ProviderContextProvider = ({ children }) => {
     setAccount(null);
   };
 
-  // Connect wallet function
+  // Connect wallet function - with better error handling and loading state
   const connectWallet = async () => {
+    if (isLoading) return; // Prevent multiple connection attempts
+    
+    setIsLoading(true);
     console.log('Connecting wallet...', { provider, window_ethereum: window.ethereum });
     
     // Try to use window.ethereum directly if provider is not set
@@ -176,12 +232,17 @@ export const ProviderContextProvider = ({ children }) => {
     if (!providerToUse) {
       console.error('No provider available. Please install MetaMask!');
       alert('MetaMask is not installed. Please install MetaMask to connect your wallet.');
+      setIsLoading(false);
       return;
     }
     
     try {
       console.log('Requesting accounts...');
-      const accounts = await providerToUse.request({ method: 'eth_requestAccounts' });
+      const accounts = await providerToUse.request({ 
+        method: 'eth_requestAccounts',
+        // Timeout after 30 seconds
+        timeout: 30000
+      });
       console.log('Accounts received:', accounts);
       
       if (accounts && accounts.length > 0) {
@@ -195,16 +256,23 @@ export const ProviderContextProvider = ({ children }) => {
         }
         
         // Get chainId
-        const chainId = await providerToUse.request({ method: 'eth_chainId' });
-        setChainId(chainId);
+        try {
+          const chainId = await providerToUse.request({ method: 'eth_chainId' });
+          setChainId(chainId);
+        } catch (chainError) {
+          console.warn('Error getting chainId:', chainError);
+        }
         
+        setIsLoading(false);
         return accounts[0];
       } else {
         console.error('No accounts found or user rejected the request');
+        setIsLoading(false);
         throw new Error('No accounts found or user rejected the request');
       }
     } catch (error) {
       console.error('Error connecting wallet:', error);
+      setIsLoading(false);
       throw error;
     }
   };
@@ -338,6 +406,8 @@ export const ProviderContextProvider = ({ children }) => {
     account,
     chainId,
     isConnected,
+    isInitialized,
+    isLoading,
     connectWallet,
     disconnectWallet,
     donateToProject,
