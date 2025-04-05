@@ -1,18 +1,19 @@
 from django.contrib import admin
-from .models import Campaign, Release, Contribution, Payment
+from .models import Campaign, Release, Contribution, Milestone, Update, Comment, PaymentSession
 from django.utils.html import format_html
 from django.urls import path
 from django.shortcuts import redirect
 from django.contrib import messages
 from web3 import Web3
+from django.conf import settings
 from .web3_helper_functions import get_staking_contract
 
 @admin.register(Release)
 class ReleaseAdmin(admin.ModelAdmin):
-    list_display = ('title', 'campaign', 'release_amount', 'release_datetime', 'status')
-    list_filter = ('status', 'release_datetime', 'campaign')
+    list_display = ('title', 'campaign', 'amount', 'request_date', 'status')
+    list_filter = ('status', 'request_date', 'campaign')
     search_fields = ('title', 'campaign__title', 'description')
-    readonly_fields = ('release_datetime', 'transaction_hash')
+    readonly_fields = ('request_date', 'transaction_hash')
     
     def get_queryset(self, request):
         """Only show releases for campaigns owned by the user"""
@@ -22,38 +23,65 @@ class ReleaseAdmin(admin.ModelAdmin):
         return qs.filter(campaign__owner=request.user)
     
     def has_change_permission(self, request, obj=None):
-        """Only allow campaign owner to edit their releases"""
+        """Only allow campaign owner or contract owner to edit their releases"""
         if obj is None:
             return True
-        return obj.campaign.can_manage(request.user)
+        if request.user.is_superuser:
+            return True
+        # Check if user is campaign owner
+        if obj.campaign.owner == request.user:
+            return True
+        # Check if user is contract owner (via wallet address)
+        if (request.user.wallet_address and obj.campaign.contract_owner and 
+            request.user.wallet_address.lower() == obj.campaign.contract_owner.lower()):
+            return True
+        return False
     
     def has_delete_permission(self, request, obj=None):
-        """Only allow campaign owner to delete their releases"""
+        """Only allow campaign owner or contract owner to delete their releases"""
         if obj is None:
             return True
-        return obj.campaign.can_manage(request.user)
+        if request.user.is_superuser:
+            return True
+        # Check if user is campaign owner
+        if obj.campaign.owner == request.user:
+            return True
+        # Check if user is contract owner (via wallet address)
+        if (request.user.wallet_address and obj.campaign.contract_owner and 
+            request.user.wallet_address.lower() == obj.campaign.contract_owner.lower()):
+            return True
+        return False
     
     actions = ['approve_releases', 'process_releases']
     
     def approve_releases(self, request, queryset):
-        """Only allow campaign owner to approve their releases"""
+        """Only allow contract owner to approve releases"""
         for release in queryset:
-            if not release.campaign.can_manage(request.user):
+            # Check if user is contract owner
+            is_contract_owner = (request.user.wallet_address and release.campaign.contract_owner and 
+                                request.user.wallet_address.lower() == release.campaign.contract_owner.lower())
+            
+            if not (is_contract_owner or request.user.is_superuser):
                 self.message_user(request, f'You do not have permission to approve release {release.title}.', level=messages.ERROR)
                 continue
-            release.status = 'APPROVED'
+                
+            release.status = 'approved'
             release.save()
         self.message_user(request, f'Selected releases have been approved.')
     approve_releases.short_description = "Approve selected releases"
     
     def process_releases(self, request, queryset):
-        """Only allow campaign owner to process their releases"""
+        """Only allow contract owner to process their releases"""
         for release in queryset:
-            if not release.campaign.can_manage(request.user):
+            # Check if user is contract owner
+            is_contract_owner = (request.user.wallet_address and release.campaign.contract_owner and 
+                                request.user.wallet_address.lower() == release.campaign.contract_owner.lower())
+            
+            if not (is_contract_owner or request.user.is_superuser):
                 self.message_user(request, f'You do not have permission to process release {release.title}.', level=messages.ERROR)
                 continue
                 
-            if release.status != 'APPROVED':
+            if release.status != 'approved':
                 self.message_user(request, f'Release {release.title} must be approved first.', level=messages.ERROR)
                 continue
                 
@@ -61,18 +89,18 @@ class ReleaseAdmin(admin.ModelAdmin):
                 # Get the campaign contract
                 contract = get_staking_contract(release.campaign.contract_address)
                 
-                # Get campaign owner's wallet address
-                campaign_owner = release.campaign.owner.wallet_address
-                if not campaign_owner:
-                    self.message_user(request, f'Campaign owner {release.campaign.owner.username} has no wallet address.', level=messages.ERROR)
+                # Get contract owner's wallet address
+                contract_owner = release.campaign.contract_owner or release.campaign.owner.wallet_address
+                if not contract_owner:
+                    self.message_user(request, f'Contract owner not found for campaign {release.campaign.title}.', level=messages.ERROR)
                     continue
                 
                 # Build and send the transaction
                 tx = contract.functions.withdraw(
-                    Web3.to_wei(release.release_amount, 'ether')
+                    Web3.to_wei(release.amount, 'ether')
                 ).build_transaction({
-                    'from': Web3.to_checksum_address(campaign_owner),
-                    'nonce': Web3.eth.get_transaction_count(Web3.to_checksum_address(campaign_owner)),
+                    'from': Web3.to_checksum_address(contract_owner),
+                    'nonce': Web3.eth.get_transaction_count(Web3.to_checksum_address(contract_owner)),
                     'gas': 200000,
                     'gasPrice': Web3.eth.gas_price
                 })
@@ -86,7 +114,7 @@ class ReleaseAdmin(admin.ModelAdmin):
                 
                 # Update release status
                 release.transaction_hash = receipt['transactionHash'].hex()
-                release.status = 'RELEASED'
+                release.status = 'completed'
                 release.save()
                 
                 self.message_user(request, f'Successfully processed release {release.title}')
@@ -98,60 +126,113 @@ class ReleaseAdmin(admin.ModelAdmin):
 
 @admin.register(Campaign)
 class CampaignAdmin(admin.ModelAdmin):
-    list_display = ('title', 'owner', 'fund_amount', 'current_amount', 'status', 'launch_date')
-    list_filter = ('status', 'launch_date', 'creation_datetime')
+    list_display = ('title', 'owner', 'contract_owner_display', 'fund_amount', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
     search_fields = ('title', 'description', 'owner__username')
-    readonly_fields = ('creation_datetime', 'updated_at', 'contract_address')
+    readonly_fields = ('created_at', 'updated_at', 'contract_address')
+    
+    def contract_owner_display(self, obj):
+        if obj.contract_owner:
+            return f"{obj.contract_owner[:6]}...{obj.contract_owner[-4:]}"
+        return "-"
+    contract_owner_display.short_description = "Contract Owner"
     
     def get_queryset(self, request):
-        """Only show campaigns owned by the user"""
+        """Show campaigns owned by the user or where user is contract owner"""
         qs = super().get_queryset(request)
         if request.user.is_superuser:
             return qs
-        return qs.filter(owner=request.user)
+        # Get campaigns where user is owner
+        user_campaigns = qs.filter(owner=request.user)
+        # If user has a wallet address, add campaigns where they are contract owner
+        if request.user.wallet_address:
+            wallet = request.user.wallet_address.lower()
+            # Django doesn't have a direct way to do case-insensitive exact match for CharFields
+            # So we'll do this in Python
+            contract_owner_campaigns_ids = []
+            for camp in qs:
+                if camp.contract_owner and camp.contract_owner.lower() == wallet:
+                    contract_owner_campaigns_ids.append(camp.id)
+            return (user_campaigns | qs.filter(id__in=contract_owner_campaigns_ids)).distinct()
+        return user_campaigns
     
     def has_change_permission(self, request, obj=None):
-        """Only allow campaign owner to edit their campaign"""
+        """Allow campaign owner or contract owner to edit their campaign"""
         if obj is None:
             return True
-        return obj.can_manage(request.user)
+        if request.user.is_superuser:
+            return True
+        # Check if user is campaign owner
+        if obj.owner == request.user:
+            return True
+        # Check if user is contract owner (via wallet address)
+        if (request.user.wallet_address and obj.contract_owner and 
+            request.user.wallet_address.lower() == obj.contract_owner.lower()):
+            return True
+        return False
     
     def has_delete_permission(self, request, obj=None):
         """Only allow campaign owner to delete their campaign"""
         if obj is None:
             return True
-        return obj.can_manage(request.user)
+        if request.user.is_superuser:
+            return True
+        # Only campaign owner can delete, not contract owner
+        if obj.owner == request.user:
+            return True
+        return False
     
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                '<int:campaign_id>/create-release/',
-                self.admin_site.admin_view(self.create_release),
-                name='campaign-create-release',
-            ),
-        ]
-        return custom_urls + urls
-    
-    def create_release(self, request, campaign_id):
-        campaign = self.get_object(request, campaign_id)
-        if not campaign.can_manage(request.user):
-            self.message_user(request, 'You do not have permission to manage this campaign.', level=messages.ERROR)
-            return redirect('admin:lakkhi_app_campaign_changelist')
-            
-        if request.method == 'POST':
-            try:
-                release = Release.objects.create(
-                    title=request.POST.get('title'),
-                    description=request.POST.get('description'),
-                    campaign=campaign,
-                    release_amount=request.POST.get('release_amount'),
-                    status='PENDING'
-                )
-                self.message_user(request, f'Release created successfully: {release.title}')
-                return redirect('admin:lakkhi_app_release_changelist')
-            except Exception as e:
-                self.message_user(request, f'Error creating release: {str(e)}', level=messages.ERROR)
-                return redirect('admin:lakkhi_app_campaign_changelist')
+    def get_readonly_fields(self, request, obj=None):
+        """Make certain fields read-only after creation"""
+        readonly_fields = list(self.readonly_fields)
+        if obj and obj.status != 'draft':
+            # Once campaign is active, these fields should be read-only
+            readonly_fields.extend(['token_address', 'token_name', 'token_symbol', 'fund_amount'])
         
-        return redirect('admin:lakkhi_app_campaign_changelist') 
+        # If user is contract owner but not campaign owner, they can't change owner fields
+        if obj and request.user != obj.owner and request.user.wallet_address and obj.contract_owner and request.user.wallet_address.lower() == obj.contract_owner.lower():
+            readonly_fields.extend(['owner', 'contract_owner', 'token_address', 'token_name', 'token_symbol', 'fund_amount'])
+        
+        return readonly_fields
+
+@admin.register(Contribution)
+class ContributionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'campaign', 'amount', 'currency', 'created_at')
+    list_filter = ('created_at', 'campaign', 'currency')
+    search_fields = ('user__username', 'campaign__title')
+    readonly_fields = ('created_at', 'transaction_hash')
+
+@admin.register(Milestone)
+class MilestoneAdmin(admin.ModelAdmin):
+    list_display = ('title', 'campaign', 'target_amount', 'current_amount', 'completed')
+    list_filter = ('completed', 'campaign')
+    search_fields = ('title', 'campaign__title', 'description')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Get milestones for campaigns where user is owner or contract owner
+        user_campaigns = Campaign.objects.filter(owner=request.user)
+        if request.user.wallet_address:
+            wallet = request.user.wallet_address.lower()
+            # Find campaigns where user is contract owner
+            contract_owner_campaigns_ids = []
+            for camp in Campaign.objects.all():
+                if camp.contract_owner and camp.contract_owner.lower() == wallet:
+                    contract_owner_campaigns_ids.append(camp.id)
+            user_campaign_ids = list(user_campaigns.values_list('id', flat=True)) + contract_owner_campaigns_ids
+            return qs.filter(campaign__id__in=user_campaign_ids)
+        return qs.filter(campaign__in=user_campaigns)
+
+@admin.register(Update)
+class UpdateAdmin(admin.ModelAdmin):
+    list_display = ('title', 'campaign', 'created_at')
+    list_filter = ('created_at', 'campaign')
+    search_fields = ('title', 'campaign__title', 'content')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(campaign__owner=request.user) 

@@ -1,14 +1,15 @@
+import json
+import datetime
+import os
 from django.db import models
-from phonenumber_field.modelfields import PhoneNumberField
-from ckeditor.fields import RichTextField
-from django.contrib.auth.models import BaseUserManager, AbstractBaseUser
-from django.core.validators import FileExtensionValidator
-from django.db.models import JSONField
-import datetime as dt
-from django.conf import settings
-from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
+from django.contrib.auth.models import AbstractUser, BaseUserManager
+from phonenumber_field.modelfields import PhoneNumberField
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.utils.text import slugify
+from django.core.validators import MinValueValidator
+from decimal import Decimal
 
 
 class UserManager(BaseUserManager):
@@ -26,22 +27,29 @@ class UserManager(BaseUserManager):
         total_contributions=0,
         is_active=True,
     ):
+        """
+        Creates and saves a user with the given info
+        """
         if not email:
             raise ValueError("Users must have an email address")
+        if not username:
+            raise ValueError("Users must have a username")
+        if not password:
+            raise ValueError("Users must have a password")
 
+        # user_id = uuid.uuid4()
         user = self.model(
             email=self.normalize_email(email),
             username=username,
+            bio=bio,
             first_name=first_name,
             last_name=last_name,
             profile_picture=profile_picture,
-            bio=bio,
             phone=phone,
             wallet_address=wallet_address,
             total_contributions=total_contributions,
             is_active=is_active,
         )
-
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -53,12 +61,18 @@ class UserManager(BaseUserManager):
         username,
         wallet_address="adminwalletaddress",
     ):
+        """
+        Creates and saves a superuser with the given info
+        """
         user = self.create_user(
-            email=self.normalize_email(email),
-            password=password,
+            email=email,
             username=username,
+            bio="Admin Account",
+            first_name="Admin",
+            last_name="Account",
+            password=password,
             wallet_address=wallet_address,
-            bio=""
+            is_active=True,
         )
         user.is_admin = True
         user.save(using=self._db)
@@ -66,13 +80,13 @@ class UserManager(BaseUserManager):
 
 
 def get_users_files_directory(instance, filename):
-    if type(instance) is User:
-        return f"users/{instance.username}/{filename}"
+    username = instance.username if instance.username else instance.user
+    return f"user_images/{username}/{filename}"
 
 
 class LowerCaseCharField(models.CharField):
     def get_prep_value(self, value):
-        return str(value).lower()
+        return str(value).lower() if value is not None else value
 
 
 class User(AbstractUser):
@@ -103,7 +117,7 @@ class User(AbstractUser):
     objects = UserManager()
 
     def __str__(self):
-        return self.username
+        return self.email
 
     def has_perm(self, perm, obj=None):
         "Does the user have a specific permission?"
@@ -123,7 +137,7 @@ class User(AbstractUser):
 
 
 def get_category_files_directory(instance, filename):
-    return f"categories/{instance.name}/{filename}"
+    return f"category_images/{instance.slug}/{filename}"
 
 
 class Category(models.Model):
@@ -132,10 +146,11 @@ class Category(models.Model):
     """
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
+    icon = models.ImageField(blank=True, null=True, upload_to=get_category_files_directory)
 
     def __str__(self):
         return self.name
-    
+
     class Meta:
         verbose_name_plural = "Categories"
 
@@ -143,7 +158,7 @@ class Category(models.Model):
 class Subcategory(models.Model):
     name = models.CharField(max_length=254, null=False, blank=False, unique=True)
     category = models.ForeignKey(
-        Category, null=False, blank=False, on_delete=models.CASCADE
+        Category, null=True, blank=False, on_delete=models.CASCADE
     )
 
     def __str__(self):
@@ -184,10 +199,11 @@ class EligibleCountry(models.Model):
 
 
 def get_project_files_directory(instance, filename):
-    if type(instance) is Project:
-        return f"projects/{instance.id}/{instance.title}/{filename}"
-    elif type(instance) is ProjectFile:
-        return f"projects/{instance.owner.id}/{instance.owner.title}/{filename}"
+    try:
+        folder_name = instance.owner.title
+    except:
+        folder_name = "no_owner"
+    return f"campaign_files/{folder_name}/{filename}"
 
 
 class Project(models.Model):
@@ -218,32 +234,43 @@ class Project(models.Model):
     # Status and metrics
     status = models.CharField(max_length=20, default='draft')
     number_of_donators = models.IntegerField(default=0)
-
+    
+    # SEO and metadata
+    keywords = models.CharField(max_length=254, null=True, blank=True)
+    
+    # Success criteria
+    minimum_fund_amount = models.DecimalField(max_digits=20, decimal_places=2, default=0)
+    
+    # Social links
+    website = models.URLField(max_length=255, null=True, blank=True)
+    twitter = models.CharField(max_length=50, null=True, blank=True)
+    telegram = models.CharField(max_length=50, null=True, blank=True)
+    discord = models.CharField(max_length=50, null=True, blank=True)
+    
     @property
     def slug(self):
         return slugify(self.title)
-
+    
     @property
     def fund_percentage(self):
         if self.fund_amount == 0:
             return 0
-        return (self.raised_amount / self.fund_amount) * 100
-        
+        return min(100, int((self.raised_amount / self.fund_amount) * 100))
+    
     @property
     def contract_url(self):
-        """Generate a contract URL based on the blockchain chain and contract address"""
         if not self.contract_address:
             return None
             
-        if self.blockchain_chain == 'BSC':
-            return f"https://bscscan.com/address/{self.contract_address}"
-        elif self.blockchain_chain == 'Ethereum':
-            return f"https://etherscan.io/address/{self.contract_address}"
-        elif self.blockchain_chain == 'Solana':
-            return f"https://explorer.solana.com/address/{self.contract_address}"
-        elif self.blockchain_chain == 'Base':
-            return f"https://basescan.org/address/{self.contract_address}"
-        return None
+        chain_to_explorer = {
+            'BSC': 'https://bscscan.com/address/',
+            'Ethereum': 'https://etherscan.io/address/',
+            'Solana': 'https://solscan.io/account/',
+            'Base': 'https://basescan.org/address/',
+        }
+        
+        explorer_base = chain_to_explorer.get(self.blockchain_chain, 'https://bscscan.com/address/')
+        return f"{explorer_base}{self.contract_address}"
 
     def __str__(self):
         return self.title
@@ -255,9 +282,10 @@ class TokenPrice(models.Model):
     """
     price = models.FloatField(null=True)
     last_updated = models.DateTimeField(auto_now=True)
-
+    token_address = models.CharField(max_length=254, null=True, primary_key=True)
+    
     def __str__(self):
-        return f"${self.price} ({self.last_updated})"
+        return f"Price of {self.token_address}"
 
 
 class ProjectFile(models.Model):
@@ -271,7 +299,7 @@ class ProjectFile(models.Model):
     file_name = models.CharField(max_length=254, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.owner.title} - {self.file_name}" if self.owner else str(self.id)
+        return self.file_name
 
 
 class RSVP(models.Model):
@@ -301,43 +329,6 @@ class RSVPSubscriber(models.Model):
         return self.email
 
 
-class Contribution(models.Model):
-    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='contributions')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contributions')
-    amount = models.DecimalField(max_digits=18, decimal_places=8)
-    currency = models.CharField(max_length=10, default='USD')
-    transaction_hash = models.CharField(max_length=66, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_anonymous = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"{self.user.username} - {self.amount} {self.currency} to {self.campaign.title}"
-
-
-class PaymentSession(models.Model):
-    """
-    Manages payment processing sessions
-    """
-    contribution = models.OneToOneField(Contribution, on_delete=models.CASCADE, related_name="payment_session")
-    session_id = models.CharField(max_length=100, unique=True)
-    payment_method = models.CharField(max_length=50, default="card")
-    
-    # Session data
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    
-    # Callback URLs
-    success_url = models.URLField(max_length=500)
-    cancel_url = models.URLField(max_length=500)
-
-    def __str__(self):
-        return f"Payment session {self.session_id} for {self.contribution}"
-    
-    @property
-    def is_expired(self):
-        return timezone.now() > self.expires_at 
-
-
 class Campaign(models.Model):
     """
     Campaign model for managing fundraising campaigns
@@ -351,6 +342,7 @@ class Campaign(models.Model):
     ]
     
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='campaigns')
+    contract_owner = models.CharField(max_length=42, blank=True, null=True, help_text="Wallet address of the contract owner who can manage funds and releases")
     title = models.CharField(max_length=200)
     description = models.TextField()
     story = models.TextField(blank=True, null=True)
@@ -388,6 +380,43 @@ class Campaign(models.Model):
         if self.fund_amount <= 0:
             return 0
         return min(100, int((self.total_raised / self.fund_amount) * 100))
+
+
+class Contribution(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='contributions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contributions')
+    amount = models.DecimalField(max_digits=18, decimal_places=8)
+    currency = models.CharField(max_length=10, default='USD')
+    transaction_hash = models.CharField(max_length=66, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_anonymous = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.campaign.title} - {self.amount} {self.currency}"
+
+
+class PaymentSession(models.Model):
+    """
+    Manages payment processing sessions
+    """
+    contribution = models.OneToOneField(Contribution, on_delete=models.CASCADE, related_name="payment_session")
+    session_id = models.CharField(max_length=100, unique=True)
+    payment_method = models.CharField(max_length=50, default="card")
+    
+    # Session data
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    
+    # Callback URLs
+    success_url = models.URLField(max_length=500)
+    cancel_url = models.URLField(max_length=500)
+    
+    def __str__(self):
+        return f"Payment Session {self.session_id}"
+    
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at
 
 
 class Release(models.Model):

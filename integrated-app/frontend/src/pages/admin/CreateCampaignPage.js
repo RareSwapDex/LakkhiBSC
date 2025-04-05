@@ -43,6 +43,7 @@ const CreateCampaignPage = () => {
       projectFundCurrency: 'USD',
       walletAddress: '',
       tokenAddress: '',
+      contractOwnerAddress: '', // Add contract owner address field
       category: '',
       tags: [],
       minContribution: '0.01',
@@ -234,34 +235,49 @@ const CreateCampaignPage = () => {
   
   // Validate form including milestones
   const validateForm = () => {
+    let isValid = true;
+    let invalidTabKey = null;
+    
     // Validate basic info
     if (!formData.basics.projectTitle || !formData.basics.projectDescription || !formData.basics.projectFundAmount) {
       setError('Please fill out all required fields in the Basics section');
-      return false;
+      isValid = false;
+      invalidTabKey = 'basics';
     }
     
     // Validate token
     if (!formData.basics.tokenAddress || !tokenInfo) {
       setError('Please provide and validate a token address');
-      return false;
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'basics';
+    }
+    
+    // Validate contract owner address
+    if (!formData.basics.contractOwnerAddress || !Web3.utils.isAddress(formData.basics.contractOwnerAddress)) {
+      setError('Please provide a valid contract owner wallet address in the Basics section');
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'basics';
     }
     
     // Validate detailed story
     if (!formData.story.projectStory || formData.story.projectStory.length < 100) {
       setError('Please provide a more detailed project story (at least 100 characters)');
-      return false;
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'story';
     }
     
     // Validate legal terms
     if (!formData.legal.termsAccepted || !formData.legal.privacyAccepted) {
       setError('You must accept the terms of service and privacy policy');
-      return false;
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'legal';
     }
     
     // Validate milestones
     if (formData.milestones.some(m => !m.title || !m.description || !m.targetAmount)) {
       setError('Please complete all milestone fields');
-      return false;
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'milestones';
     }
     
     // Calculate total milestone amounts
@@ -273,10 +289,11 @@ const CreateCampaignPage = () => {
     // Compare with fund amount
     if (Math.abs(totalMilestoneAmount - parseFloat(formData.basics.projectFundAmount)) > 0.01) {
       setError(`Total milestone amounts (${totalMilestoneAmount}) must equal the fund amount (${formData.basics.projectFundAmount})`);
-      return false;
+      isValid = false;
+      invalidTabKey = invalidTabKey || 'milestones';
     }
     
-    return true;
+    return isValid;
   };
   
   // Token validation function
@@ -384,6 +401,10 @@ const CreateCampaignPage = () => {
           
           // Set wallet address in form data
           handleInputChange('basics', 'walletAddress', account);
+          
+          // Also set the contract owner address to the connected wallet by default
+          handleInputChange('basics', 'contractOwnerAddress', account);
+          
           setError(null); // Clear any existing error
         } else {
           setError('Please connect your wallet to create a campaign');
@@ -609,6 +630,9 @@ const CreateCampaignPage = () => {
         return null;
       }
       
+      // Get the contract owner address from form data or use connected wallet
+      const contractOwner = formData.basics.contractOwnerAddress || account;
+      
       // Inform user about the transaction
       setError('Please confirm the transaction in your wallet to deploy the campaign smart contract...');
       
@@ -694,7 +718,7 @@ const CreateCampaignPage = () => {
       console.log('Deploying contract with params:', {
         name: formData.basics.projectTitle,
         tokenAddress: formData.basics.tokenAddress,
-        beneficiary: account,
+        beneficiary: contractOwner, // Use contract owner address
         targetAmount: fundAmountInWei,
         minContribution: minContributionInWei,
         maxContribution: maxContributionInWei,
@@ -712,7 +736,7 @@ const CreateCampaignPage = () => {
           data: factoryContract.methods.createCampaign(
             formData.basics.projectTitle,
             formData.basics.tokenAddress,
-            account, // Use connected wallet
+            contractOwner, // Use contract owner address
             fundAmountInWei,
             minContributionInWei,
             maxContributionInWei,
@@ -1560,9 +1584,22 @@ const CreateCampaignPage = () => {
                 className="bg-light"
               />
               <Form.Text className="text-muted">
-                <strong>Important:</strong> This wallet will be the owner of the campaign. Only this wallet address 
-                will be able to withdraw or manage funds. Make sure you have access to this wallet as ownership 
-                cannot be transferred later.
+                <strong>Important:</strong> This wallet will be the owner of the campaign and will create the campaign record.
+              </Form.Text>
+            </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Contract Owner Address (for fund management)</Form.Label>
+              <Form.Control
+                type="text"
+                value={connectedWallet}  // Default to connected wallet
+                onChange={(e) => handleInputChange('basics', 'contractOwnerAddress', e.target.value)}
+                placeholder="0x..."
+              />
+              <Form.Text className="text-muted">
+                <strong>Important:</strong> This wallet will be the owner of the campaign's smart contract. Only this wallet address 
+                will be able to withdraw or manage funds. Make sure it's correct as ownership cannot be transferred later.
+                Leave as your connected wallet address if you want to manage the funds yourself.
               </Form.Text>
             </Form.Group>
             

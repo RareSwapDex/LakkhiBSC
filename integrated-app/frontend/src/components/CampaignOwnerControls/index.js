@@ -15,11 +15,13 @@ import {
   Alert,
   Snackbar,
   Divider,
+  Chip,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import DownloadIcon from '@mui/icons-material/Download';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import axios from 'axios';
 
 const CampaignOwnerControls = ({ campaign, onUpdate }) => {
@@ -55,7 +57,7 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
           break;
         case 'release':
           await axios.post(`/api/campaigns/${campaign.id}/releases/`, formData);
-          setSuccess('Funds released successfully');
+          setSuccess('Funds release request submitted successfully');
           onUpdate();
           break;
         default:
@@ -92,6 +94,11 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
           <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
             <DialogTitle>Edit Campaign</DialogTitle>
             <DialogContent>
+              {campaign.is_contract_owner && !campaign.is_owner && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  As the contract owner, you can edit campaign details but not core token information.
+                </Alert>
+              )}
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
                   <TextField
@@ -194,6 +201,11 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
           <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
             <DialogTitle>Release Funds</DialogTitle>
             <DialogContent>
+              {campaign.is_owner && !campaign.is_contract_owner && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Your release request will need to be approved by the contract owner wallet.
+                </Alert>
+              )}
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
                   <TextField
@@ -222,7 +234,7 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
             <DialogActions>
               <Button onClick={handleCloseDialog}>Cancel</Button>
               <Button onClick={handleSubmit} variant="contained" color="primary">
-                Release Funds
+                {campaign.is_contract_owner ? 'Release Funds' : 'Request Fund Release'}
               </Button>
             </DialogActions>
           </Dialog>
@@ -237,9 +249,33 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
     <Box>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">
-            Campaign Owner Controls
-          </Typography>
+          <Box>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+              Campaign Management
+              {campaign.is_owner && (
+                <Chip 
+                  label="Campaign Creator" 
+                  size="small" 
+                  color="primary" 
+                  sx={{ ml: 1 }} 
+                />
+              )}
+              {campaign.is_contract_owner && (
+                <Chip 
+                  label="Contract Owner" 
+                  size="small" 
+                  color="secondary" 
+                  icon={<AccountBalanceWalletIcon fontSize="small" />}
+                  sx={{ ml: 1 }} 
+                />
+              )}
+            </Typography>
+            {campaign.contract_owner && (
+              <Typography variant="caption" color="text.secondary">
+                Contract Owner: {campaign.contract_owner.slice(0,6)}...{campaign.contract_owner.slice(-4)}
+              </Typography>
+            )}
+          </Box>
           <Button
             startIcon={<DownloadIcon />}
             onClick={handleExport}
@@ -278,7 +314,7 @@ const CampaignOwnerControls = ({ campaign, onUpdate }) => {
               variant="outlined"
               color="primary"
             >
-              Release Funds
+              {campaign.is_contract_owner ? 'Release Funds' : 'Request Fund Release'}
             </Button>
           </Grid>
         </Grid>
