@@ -12,6 +12,7 @@ const ProjectDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isContractOwner, setIsContractOwner] = useState(false);
   
   useEffect(() => {
     const fetchProject = async () => {
@@ -23,6 +24,11 @@ const ProjectDetailPage = () => {
           // Check if current wallet address matches the project owner
           if (account && account.toLowerCase() === response.project.wallet_address?.toLowerCase()) {
             setIsOwner(true);
+          }
+          // Check if current wallet address matches the contract owner (who can release funds)
+          if (account && response.project.contract_owner_address &&
+              account.toLowerCase() === response.project.contract_owner_address?.toLowerCase()) {
+            setIsContractOwner(true);
           }
         } else {
           setError(response.message || 'Failed to fetch project');
@@ -73,11 +79,18 @@ const ProjectDetailPage = () => {
         <Col md={8}>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h1>{project.title}</h1>
-            {isOwner && (
-              <Link to={`/edit-campaign/${project.id}`}>
-                <Button variant="outline-primary">Edit Campaign</Button>
-              </Link>
-            )}
+            <div>
+              {isOwner && (
+                <Link to={`/edit-campaign/${project.id}`} className="me-2">
+                  <Button variant="outline-primary">Edit Campaign</Button>
+                </Link>
+              )}
+              {isContractOwner && (
+                <Link to={`/projects/${project.id}/releases`}>
+                  <Button variant="success">Manage Fund Releases</Button>
+                </Link>
+              )}
+            </div>
           </div>
           
           <div className="mb-4">
@@ -153,11 +166,39 @@ const ProjectDetailPage = () => {
           {project.wallet_address && (
             <Card className="mb-4">
               <Card.Body>
-                <Card.Title>Project Wallet</Card.Title>
+                <Card.Title>Project Creator</Card.Title>
                 <Card.Text>
-                  <small className="text-muted">Funds go directly to:</small>
+                  <small className="text-muted">Campaign created by:</small>
                   <br />
                   <code className="user-select-all">{project.wallet_address}</code>
+                </Card.Text>
+              </Card.Body>
+            </Card>
+          )}
+          
+          {project.contract_owner_address && (
+            <Card className="mb-4">
+              <Card.Body>
+                <Card.Title>Fund Controller</Card.Title>
+                <Card.Text>
+                  <small className="text-muted">Funds controlled by:</small>
+                  <br />
+                  <code className="user-select-all">{project.contract_owner_address}</code>
+                  {project.contract_owner_address.toLowerCase() !== project.wallet_address.toLowerCase() && (
+                    <div className="mt-2">
+                      <Alert variant="info" className="p-2 small">
+                        <i className="bi bi-info-circle me-2"></i>
+                        This account is different from the campaign creator and has exclusive rights to release funds.
+                      </Alert>
+                    </div>
+                  )}
+                  {isContractOwner && (
+                    <div className="mt-3">
+                      <Link to={`/projects/${project.id}/releases`}>
+                        <Button variant="success" size="sm" className="w-100">Release Funds</Button>
+                      </Link>
+                    </div>
+                  )}
                 </Card.Text>
               </Card.Body>
             </Card>

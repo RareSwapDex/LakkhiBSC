@@ -561,7 +561,7 @@ def release_funds(contract_address, wallet_info):
         }
     except Exception as e:
         print(f"Error releasing funds: {e}")
-        return {'success': False, 'message': str(e)} 
+        return {'success': False, 'message': str(e)}
 
 def get_token_info(token_address):
     """
@@ -695,4 +695,82 @@ def get_token_info(token_address):
         return {
             'success': False,
             'message': f"Error getting token information: {str(e)}"
-        } 
+        }
+
+def execute_contract_release(contract_address, wallet_address, amount, wallet_key=None):
+    """
+    Execute a fund release from a staking contract
+    
+    Args:
+        contract_address: Address of the staking contract
+        wallet_address: Wallet address of the contract owner
+        amount: Amount to release (for record-keeping, actual release is full amount available)
+        wallet_key: Optional private key to sign the transaction
+        
+    Returns:
+        dict: Result of the execution
+    """
+    try:
+        # Validate inputs
+        if not contract_address or not contract_address.startswith('0x'):
+            return {'success': False, 'message': 'Invalid contract address'}
+        
+        if not wallet_address or not wallet_address.startswith('0x'):
+            return {'success': False, 'message': 'Invalid wallet address'}
+        
+        # Get contract instance
+        contract = get_staking_contract(contract_address)
+        if not contract:
+            return {'success': False, 'message': 'Failed to get contract instance'}
+        
+        # Check if wallet is the contract owner (beneficiary)
+        try:
+            beneficiary = contract.functions.beneficiary().call()
+            if beneficiary.lower() != wallet_address.lower():
+                return {
+                    'success': False, 
+                    'message': 'Wallet address is not the contract owner (beneficiary)'
+                }
+        except Exception as e:
+            return {'success': False, 'message': f'Error checking contract owner: {str(e)}'}
+        
+        # If wallet key is not provided, return instructions
+        if not wallet_key:
+            return {
+                'success': False,
+                'requires_wallet': True,
+                'message': 'Wallet signature required to execute release',
+                'data': {
+                    'contract_address': contract_address,
+                    'wallet_address': wallet_address,
+                    'amount': str(amount),
+                    'function': 'release()'
+                }
+            }
+        
+        # Get nonce for transaction
+        nonce = w3.eth.get_transaction_count(wallet_address)
+        
+        # Prepare transaction
+        gas_price = w3.eth.gas_price
+        tx = contract.functions.release().build_transaction({
+            'from': wallet_address,
+            'gas': 200000,  # Estimated gas
+            'gasPrice': gas_price,
+            'nonce': nonce,
+        })
+        
+        # Sign transaction
+        signed_tx = w3.eth.account.sign_transaction(tx, wallet_key)
+        
+        # Send transaction
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        
+        return {
+            'success': True,
+            'message': 'Release transaction executed successfully',
+            'transaction_hash': tx_hash.hex()
+        }
+    except Exception as e:
+        print(f"Error executing contract release: {e}")
+        return {'success': False, 'message': str(e)} 

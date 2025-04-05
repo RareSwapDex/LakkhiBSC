@@ -138,6 +138,7 @@ def projects_details_by_id(request, id):
             "number_of_donators": project.number_of_donators,
             "wallet_address": project.wallet_address,
             "token_address": project.token_address,
+            "contract_owner_address": project.contract_owner_address,
             "token_info": token_info,
         }
         
@@ -150,81 +151,65 @@ def projects_details_by_id(request, id):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def create_campaign(request):
+@permission_classes([AllowAny])
+def create_project(request):
+    """Create a new project"""
     try:
-        # Check if user has a wallet address
-        if not request.user.wallet_address:
-            return Response({
-                "status": "error",
-                "message": "User must have a wallet address to create a campaign"
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Extract form data
+        title = request.data.get('title')
+        description = request.data.get('description')
+        fund_amount = request.data.get('fund_amount')
+        token_address = request.data.get('token_address')
+        blockchain_chain = request.data.get('blockchain_chain', 'BSC')
+        wallet_address = request.data.get('wallet_address')
         
-        # Create campaign in database
-        campaign = Campaign.objects.create(
-                owner=request.user,
-                title=request.data.get("basics.projectTitle"),
-            description=request.data.get("story.projectStory"),
-            fund_amount=request.data.get("funding.projectFundsAmount"),
-            currency=request.data.get("funding.projectFundCurrency"),
-            fund_spend=request.data.get("funding.fundingSpend", {}),
-            deadline=request.data.get("basics.projectDeadlineDate", "30"),
-                launch_date=request.data.get("basics.projectLaunchDate"),
-            status="DRAFT"
-        )
+        # Get the optional contract owner address
+        contract_owner_address = request.data.get('contract_owner_address')
         
-        # Handle campaign image if provided
-        if "basics.projectImageFile" in request.FILES:
-            campaign.thumbnail = request.FILES["basics.projectImageFile"]
-            campaign.save()
+        # If contract owner address is not provided, use the creator's wallet address
+        if not contract_owner_address:
+            contract_owner_address = wallet_address
         
-        # Deploy campaign contract using campaign owner's wallet
-        contract_address = deploy_campaign_contract(
-            token_address=settings.LAKKHI_TOKEN_ADDRESS,
-            campaign_owner=request.user.wallet_address,
-            campaign_id=campaign.id
-        )
+        # Validate required fields
+        if not all([title, description, fund_amount, token_address, wallet_address]):
+            return Response(
+                {"success": False, "message": "Missing required fields"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        # Update campaign with contract address
-        campaign.contract_address = contract_address
-        campaign.save()
-        
-        # Send confirmation email
-        campaign_url = f"{settings.FRONTEND_URL}/campaigns/{campaign.id}"
-        email_message = f"""
-        <html>
-        <body>
-        <p>Congratulations! Your campaign, <strong>{campaign.title}</strong>, has been created successfully.</p>
-        
-        <p>Access your campaign page directly via this <a href='{campaign_url}'>link</a>.</p>
-        
-        <p>Your campaign is currently in DRAFT status. You can review and edit your campaign details before launching it.</p>
-        
-        <p>Once you're ready, you can launch your campaign from the campaign dashboard.</p>
-        
-        <p>Best regards,<br>Lakkhi Team</p>
-        </body>
-        </html>
-        """
-        
-        send_html_email(
-            subject="Lakkhi: Your Campaign Has Been Created",
-            message=email_message,
-            recipient_list=[request.user.email]
+        # Create the project
+        project = Project.objects.create(
+            title=title,
+            description=description,
+            fund_amount=fund_amount,
+            token_address=token_address,
+            blockchain_chain=blockchain_chain,
+            wallet_address=wallet_address,
+            contract_owner_address=contract_owner_address,
+            status='draft'
         )
         
         return Response({
-            "status": "success",
-            "message": "Campaign created successfully",
-            "campaign_id": campaign.id,
-            "contract_address": contract_address
-        }, status=status.HTTP_201_CREATED)
-        
+            "success": True,
+            "message": "Project created successfully",
+            "project": {
+                "id": project.id,
+                "title": project.title,
+                "description": project.description,
+                "fund_amount": project.fund_amount,
+                "fund_currency": project.currency,
+                "blockchain_chain": project.blockchain_chain,
+                "wallet_address": project.wallet_address,
+                "contract_owner_address": project.contract_owner_address,
+                "token_address": project.token_address,
+                "status": project.status
+            }
+        })
     except Exception as e:
-        return Response({
-            "status": "error",
-            "message": str(e)
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"success": False, "message": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 def validate_token_address(token_address):
@@ -348,12 +333,15 @@ def publish_project(request, project_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Use contract owner address for the contract deployment
+        contract_owner = project.contract_owner_address or project.wallet_address
+        
         # Get deployment instructions from web3_helper_functions
         from .web3_helper_functions import deploy_staking_contract
         deployment_info = deploy_staking_contract(
             project.title,
             project.fund_amount,
-            project.wallet_address,
+            contract_owner,  # Use the designated contract owner
             project.token_address,
             wallet_key=None  # No key means just get instructions
         )
@@ -900,21 +888,106 @@ class ReleaseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
         
-        # Check if user is the campaign owner
-        if campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can request releases")
+        # Find the associated project to check the contract owner
+        try:
+            project = Project.objects.get(contract_address=campaign.contract_address)
+            # Check if user is the contract owner
+            if self.request.user.wallet_address.lower() != project.contract_owner_address.lower():
+                raise PermissionDenied("Only the designated contract owner can request fund releases")
+        except Project.DoesNotExist:
+            # Fallback to old behavior if project not found
+            if campaign.owner != self.request.user:
+                raise PermissionDenied("Only campaign owners can request releases")
             
         serializer.save(campaign=campaign, status='pending')
     
     def perform_update(self, serializer):
-        if serializer.instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can update release requests")
+        campaign = serializer.instance.campaign
+        
+        # Find the associated project to check the contract owner
+        try:
+            project = Project.objects.get(contract_address=campaign.contract_address)
+            # Check if user is the contract owner
+            if self.request.user.wallet_address.lower() != project.contract_owner_address.lower():
+                raise PermissionDenied("Only the designated contract owner can update release requests")
+        except Project.DoesNotExist:
+            # Fallback to old behavior if project not found
+            if campaign.owner != self.request.user:
+                raise PermissionDenied("Only campaign owners can update release requests")
+                
         serializer.save()
     
     def perform_destroy(self, instance):
-        if instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can delete release requests")
+        campaign = instance.campaign
+        
+        # Find the associated project to check the contract owner
+        try:
+            project = Project.objects.get(contract_address=campaign.contract_address)
+            # Check if user is the contract owner
+            if self.request.user.wallet_address.lower() != project.contract_owner_address.lower():
+                raise PermissionDenied("Only the designated contract owner can delete release requests")
+        except Project.DoesNotExist:
+            # Fallback to old behavior if project not found
+            if campaign.owner != self.request.user:
+                raise PermissionDenied("Only campaign owners can delete release requests")
+                
         instance.delete()
+
+    @action(detail=True, methods=['post'])
+    def execute(self, request, campaign_pk=None, pk=None):
+        release = self.get_object()
+        campaign = release.campaign
+        
+        # Check if release is already completed
+        if release.status == 'completed':
+            return Response({"detail": "This release has already been executed"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Find the associated project to check the contract owner
+        try:
+            project = Project.objects.get(contract_address=campaign.contract_address)
+            # Check if user is the contract owner
+            if self.request.user.wallet_address.lower() != project.contract_owner_address.lower():
+                return Response(
+                    {"detail": "Only the designated contract owner can execute fund releases"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+                
+            # Execute the on-chain transaction
+            from .web3_helper_functions import execute_contract_release
+            result = execute_contract_release(
+                contract_address=project.contract_address,
+                wallet_address=self.request.user.wallet_address,
+                amount=release.amount
+            )
+            
+            if result.get('success'):
+                # Update release status
+                release.status = 'completed'
+                release.release_date = timezone.now()
+                release.transaction_hash = result.get('transaction_hash')
+                release.save()
+                
+                return Response({
+                    "detail": "Fund release executed successfully",
+                    "transaction_hash": result.get('transaction_hash')
+                })
+            else:
+                return Response(
+                    {"detail": result.get('message', 'Failed to execute release')}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        except Project.DoesNotExist:
+            # Fallback to old behavior if project not found
+            return Response(
+                {"detail": "Associated project not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"detail": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # Additional API view for exporting campaign analytics

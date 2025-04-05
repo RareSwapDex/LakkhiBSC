@@ -3,9 +3,10 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProviderContextProvider } from './web3/ProviderContext';
 import './App.css';
+import 'bootstrap/dist/css/bootstrap.min.css';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import HomePage from './pages/HomePage/index';
+import HomePage from './pages/HomePage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -15,6 +16,7 @@ import FAQPage from './pages/FAQ';
 import PrivacyPolicyPage from './pages/Privacy';
 import TermsOfServicePage from './pages/Terms';
 import WhitepaperPage from './pages/WhitepaperPage';
+import FundReleasesPage from './pages/FundReleasesPage';
 
 function App() {
   return (
@@ -29,6 +31,7 @@ function App() {
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/campaigns" element={<ProjectsPage />} />
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/projects/:id/releases" element={<FundReleasesPage />} />
                 <Route path="/campaigns/:id" element={<ProjectDetailPage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
