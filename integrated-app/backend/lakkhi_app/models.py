@@ -341,6 +341,126 @@ class PaymentSession(models.Model):
         return timezone.now() > self.expires_at 
 
 
+class Blockchain(models.Model):
+    """
+    Model for supported blockchains (EVM-compatible only)
+    """
+    NETWORK_CHOICES = [
+        ('BSC', 'Binance Smart Chain'),
+        ('ETH', 'Ethereum'),
+        ('BASE', 'Base'),
+    ]
+    
+    name = models.CharField(max_length=50, choices=NETWORK_CHOICES, unique=True)
+    network_id = models.CharField(max_length=10)
+    rpc_url = models.URLField(max_length=200)
+    explorer_url = models.URLField(max_length=200)
+    icon = models.ImageField(upload_to='blockchain_icons/', null=True, blank=True)
+    is_enabled = models.BooleanField(default=True)
+    gas_limit = models.PositiveIntegerField(default=2000000)
+    
+    def __str__(self):
+        return self.get_name_display()
+
+
+class CreatorVerification(models.Model):
+    """
+    Model for tracking creator verification status
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('verified', 'Verified'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='verification')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    social_proof_url = models.URLField(max_length=255, blank=True, null=True)
+    github_username = models.CharField(max_length=100, blank=True, null=True)
+    website_url = models.URLField(max_length=255, blank=True, null=True)
+    bio = models.TextField(blank=True, null=True)
+    verification_date = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.status}"
+
+
+class Collaborator(models.Model):
+    """
+    Model for campaign collaborators
+    """
+    ROLE_CHOICES = [
+        ('owner', 'Owner'),
+        ('admin', 'Administrator'),
+        ('editor', 'Editor'),
+        ('viewer', 'Viewer'),
+    ]
+    
+    campaign = models.ForeignKey('Campaign', on_delete=models.CASCADE, related_name='collaborators')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='collaborations')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='viewer')
+    can_edit_basics = models.BooleanField(default=False)
+    can_edit_story = models.BooleanField(default=False)
+    can_manage_team = models.BooleanField(default=False)
+    can_manage_milestones = models.BooleanField(default=False)
+    can_manage_rewards = models.BooleanField(default=False)
+    can_post_updates = models.BooleanField(default=False)
+    can_manage_funds = models.BooleanField(default=False)
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='collaborator_invites')
+    invitation_accepted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('campaign', 'user')
+        
+    def __str__(self):
+        return f"{self.user.username} - {self.campaign.title} ({self.get_role_display()})"
+
+
+class ForumTopic(models.Model):
+    """
+    Model for campaign forum topics
+    """
+    campaign = models.ForeignKey('Campaign', on_delete=models.CASCADE, related_name='forum_topics')
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='forum_topics')
+    is_pinned = models.BooleanField(default=False)
+    is_closed = models.BooleanField(default=False)
+    views = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_pinned', '-created_at']
+    
+    def __str__(self):
+        return f"{self.title} - {self.campaign.title}"
+
+
+class ForumReply(models.Model):
+    """
+    Model for campaign forum replies
+    """
+    topic = models.ForeignKey(ForumTopic, on_delete=models.CASCADE, related_name='replies')
+    content = models.TextField()
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='forum_replies')
+    is_solution = models.BooleanField(default=False)
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"Reply by {self.author.username} on {self.topic.title}"
+
+
 class Campaign(models.Model):
     """
     Campaign model for managing fundraising campaigns
@@ -372,13 +492,19 @@ class Campaign(models.Model):
     token_name = models.CharField(max_length=50, blank=True, null=True)
     token_symbol = models.CharField(max_length=10, blank=True, null=True)
     
+    # Blockchain Information
+    blockchain = models.ForeignKey(Blockchain, on_delete=models.SET_NULL, null=True, related_name='campaigns')
+    contract_address = models.CharField(max_length=42, blank=True, null=True)
+    
     # Schedule
     start_date = models.DateTimeField(default=timezone.now)
     end_date = models.DateTimeField(blank=True, null=True)
     
-    # Contract Information
-    contract_address = models.CharField(max_length=42, blank=True, null=True)
+    # Status and Verification
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    is_featured = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    verification_notes = models.TextField(blank=True, null=True)
     
     # Social Links
     website = models.URLField(max_length=255, blank=True, null=True)
@@ -387,9 +513,17 @@ class Campaign(models.Model):
     discord = models.URLField(max_length=255, blank=True, null=True)
     github = models.URLField(max_length=255, blank=True, null=True)
     
+    # Collaboration Settings
+    allow_team_applications = models.BooleanField(default=False)
+    is_collaborative = models.BooleanField(default=False)
+    
+    # Community Settings
+    enable_forum = models.BooleanField(default=True)
+    forum_moderation_required = models.BooleanField(default=False)
+    
     # Legal
     terms_accepted = models.BooleanField(default=False)
-    kyc_completed = models.BooleanField(default=False)
+    legal_documents = models.JSONField(default=list)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -415,6 +549,34 @@ class Campaign(models.Model):
         if self.fund_amount <= 0:
             return 0
         return min(100, int((self.total_raised / self.fund_amount) * 100))
+        
+    @property
+    def has_forum_activity(self):
+        """Check if the campaign has any forum activity"""
+        return self.forum_topics.exists()
+        
+    @property
+    def team_size(self):
+        """Get the number of collaborators including the owner"""
+        return self.collaborators.count() + 1
+        
+    @property
+    def days_remaining(self):
+        """Calculate days remaining until campaign end"""
+        if not self.end_date:
+            return None
+        delta = self.end_date - timezone.now()
+        return max(0, delta.days)
+        
+    def can_user_edit(self, user):
+        """Check if a user has edit permissions for this campaign"""
+        if user == self.owner:
+            return True
+        try:
+            collab = self.collaborators.get(user=user, invitation_accepted=True)
+            return collab.role in ['owner', 'admin', 'editor']
+        except Collaborator.DoesNotExist:
+            return False
 
 
 class Release(models.Model):

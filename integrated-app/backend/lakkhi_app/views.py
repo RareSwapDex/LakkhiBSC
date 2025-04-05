@@ -10,7 +10,7 @@ from django.utils import timezone
 from . import web3_helper_functions
 from . import venly  # Keep venly import - we now have our own implementation
 from .custom_wallet import wallet_manager
-from .models import Project, TokenPrice, Campaign, Contribution, Milestone, Release, Update, Comment
+from .models import Project, TokenPrice, Campaign, Contribution, Milestone, Release, Update, Comment, Blockchain, CreatorVerification, Collaborator, ForumTopic, ForumReply
 from .web3_helper_functions import (
     get_token_info,
 )
@@ -45,10 +45,16 @@ from .serializers import (
     MilestoneSerializer, 
     ReleaseSerializer,
     UpdateSerializer,
-    CommentSerializer
+    CommentSerializer,
+    BlockchainSerializer,
+    CreatorVerificationSerializer,
+    CollaboratorSerializer,
+    ForumTopicSerializer,
+    ForumReplySerializer
 )
 from .eth.deploy import deploy_contract
 from .mercuryo.client import MercuryoClient
+from .solana.client import SolanaClient
 
 
 @api_view(["GET"])
@@ -1062,3 +1068,254 @@ def update_project(request, project_id):
             {"success": False, "message": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         ) 
+
+
+class BlockchainViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint for blockchain information
+    """
+    queryset = Blockchain.objects.filter(is_enabled=True)
+    serializer_class = BlockchainSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    @action(detail=True, methods=['get'])
+    def gas_price(self, request, pk=None):
+        """
+        Get current gas price for the blockchain
+        """
+        blockchain = self.get_object()
+        try:
+            # Get gas price from blockchain RPC (all supported chains are EVM-compatible)
+            web3 = Web3(Web3.HTTPProvider(blockchain.rpc_url))
+            gas_price = web3.eth.gas_price
+            return Response({
+                'gas_price': str(gas_price),
+                'gas_price_gwei': str(web3.from_wei(gas_price, 'gwei')),
+                'updated_at': timezone.now(),
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class CreatorVerificationViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for creator verification requests
+    """
+    serializer_class = CreatorVerificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return CreatorVerification.objects.all()
+        return CreatorVerification.objects.filter(user=user)
+    
+    def perform_create(self, serializer):
+        # Check if user already has a verification request
+        if CreatorVerification.objects.filter(user=self.request.user).exists():
+            raise ValidationError("You already have a verification request")
+        serializer.save(user=self.request.user)
+    
+    @action(detail=False, methods=['get'])
+    def my_verification(self, request):
+        """
+        Get the current user's verification status
+        """
+        try:
+            verification = CreatorVerification.objects.get(user=request.user)
+            serializer = self.get_serializer(verification)
+            return Response(serializer.data)
+        except CreatorVerification.DoesNotExist:
+            return Response({'status': 'not_requested'}, status=404)
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def verify(self, request, pk=None):
+        """
+        Approve a verification request (admin only)
+        """
+        verification = self.get_object()
+        verification.status = 'verified'
+        verification.verification_date = timezone.now()
+        verification.save()
+        
+        # Update all user's campaigns to show verified status
+        Campaign.objects.filter(owner=verification.user).update(is_verified=True)
+        
+        return Response({'status': 'verified'})
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAdminUser])
+    def reject(self, request, pk=None):
+        """
+        Reject a verification request (admin only)
+        """
+        verification = self.get_object()
+        verification.status = 'rejected'
+        verification.rejection_reason = request.data.get('reason', '')
+        verification.save()
+        return Response({'status': 'rejected'})
+
+
+class CollaboratorViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for campaign collaborators
+    """
+    serializer_class = CollaboratorSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        if 'campaign_pk' in self.kwargs:
+            campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
+            # Check if user is owner or collaborator
+            if campaign.owner == self.request.user or campaign.collaborators.filter(user=self.request.user).exists():
+                return Collaborator.objects.filter(campaign=campaign)
+            raise PermissionDenied("You don't have permission to view collaborators")
+        return Collaborator.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
+        if campaign.owner != self.request.user and not campaign.collaborators.filter(
+            user=self.request.user, role__in=['owner', 'admin']
+        ).exists():
+            raise PermissionDenied("You don't have permission to add collaborators")
+        serializer.save(
+            campaign=campaign,
+            invited_by=self.request.user
+        )
+    
+    @action(detail=True, methods=['post'])
+    def accept(self, request, campaign_pk=None, pk=None):
+        """
+        Accept a collaboration invitation
+        """
+        invitation = self.get_object()
+        if invitation.user != request.user:
+            raise PermissionDenied("This is not your invitation")
+        
+        invitation.invitation_accepted = True
+        invitation.save()
+        return Response({'status': 'accepted'})
+    
+    @action(detail=True, methods=['post'])
+    def decline(self, request, campaign_pk=None, pk=None):
+        """
+        Decline a collaboration invitation
+        """
+        invitation = self.get_object()
+        if invitation.user != request.user:
+            raise PermissionDenied("This is not your invitation")
+        
+        invitation.delete()
+        return Response({'status': 'declined'})
+
+
+class ForumTopicViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for campaign forum topics
+    """
+    serializer_class = ForumTopicSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
+        return ForumTopic.objects.filter(campaign=campaign)
+    
+    def perform_create(self, serializer):
+        campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
+        if not campaign.enable_forum:
+            raise ValidationError("Forum is disabled for this campaign")
+        serializer.save(
+            campaign=campaign,
+            author=self.request.user
+        )
+    
+    @action(detail=True, methods=['post'])
+    def view(self, request, campaign_pk=None, pk=None):
+        """
+        Increment view count for a topic
+        """
+        topic = self.get_object()
+        topic.views += 1
+        topic.save()
+        return Response({'views': topic.views})
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def pin(self, request, campaign_pk=None, pk=None):
+        """
+        Pin/unpin a topic (campaign owner or moderator only)
+        """
+        topic = self.get_object()
+        campaign = topic.campaign
+        
+        if not (campaign.owner == request.user or campaign.collaborators.filter(
+            user=request.user, role__in=['owner', 'admin']
+        ).exists()):
+            raise PermissionDenied("You don't have permission to pin topics")
+        
+        topic.is_pinned = not topic.is_pinned
+        topic.save()
+        return Response({'is_pinned': topic.is_pinned})
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def close(self, request, campaign_pk=None, pk=None):
+        """
+        Close/reopen a topic (campaign owner, moderator or topic author)
+        """
+        topic = self.get_object()
+        campaign = topic.campaign
+        
+        if not (campaign.owner == request.user or topic.author == request.user or campaign.collaborators.filter(
+            user=request.user, role__in=['owner', 'admin']
+        ).exists()):
+            raise PermissionDenied("You don't have permission to close this topic")
+        
+        topic.is_closed = not topic.is_closed
+        topic.save()
+        return Response({'is_closed': topic.is_closed})
+
+
+class ForumReplyViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for campaign forum replies
+    """
+    serializer_class = ForumReplySerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get_queryset(self):
+        topic = get_object_or_404(ForumTopic, campaign__id=self.kwargs['campaign_pk'], pk=self.kwargs['topic_pk'])
+        return ForumReply.objects.filter(topic=topic)
+    
+    def perform_create(self, serializer):
+        topic = get_object_or_404(ForumTopic, campaign__id=self.kwargs['campaign_pk'], pk=self.kwargs['topic_pk'])
+        if topic.is_closed:
+            raise ValidationError("This topic is closed for new replies")
+        
+        # Check for a parent reply (nested comment)
+        parent_id = self.request.data.get('parent')
+        parent = None
+        if parent_id:
+            parent = get_object_or_404(ForumReply, pk=parent_id, topic=topic)
+        
+        serializer.save(
+            topic=topic,
+            author=self.request.user,
+            parent=parent
+        )
+    
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def mark_solution(self, request, campaign_pk=None, topic_pk=None, pk=None):
+        """
+        Mark/unmark a reply as the solution (topic author or campaign owner only)
+        """
+        reply = self.get_object()
+        topic = reply.topic
+        
+        if not (topic.author == request.user or topic.campaign.owner == request.user):
+            raise PermissionDenied("You don't have permission to mark solutions")
+        
+        # Unmark any existing solutions
+        ForumReply.objects.filter(topic=topic, is_solution=True).update(is_solution=False)
+        
+        # Mark this reply as solution if it wasn't already
+        reply.is_solution = not reply.is_solution
+        reply.save()
+        return Response({'is_solution': reply.is_solution}) 
