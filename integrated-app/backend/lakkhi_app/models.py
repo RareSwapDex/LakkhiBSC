@@ -201,6 +201,9 @@ class Project(models.Model):
     token_address = models.CharField(max_length=254)  # Token contract address
     blockchain_chain = models.CharField(max_length=50, default='BSC')
     
+    # Contract ownership
+    contract_owner_address = models.CharField(max_length=254, null=True, blank=True)  # Designated contract owner
+    
     # Contract info
     contract_address = models.CharField(max_length=254, null=True, blank=True)
     transaction_hash = models.CharField(max_length=254, null=True, blank=True)
@@ -350,21 +353,45 @@ class Campaign(models.Model):
         ('cancelled', 'Cancelled'),
     ]
     
+    # Basic Information
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='campaigns')
     title = models.CharField(max_length=200)
     description = models.TextField()
+    fund_amount = models.DecimalField(max_digits=18, decimal_places=8)
+    currency = models.CharField(max_length=10, default='USD')
+    min_contribution = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
+    max_contribution = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
+    
+    # Detailed Story
     story = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='campaign_images/', null=True, blank=True)
     video_url = models.URLField(max_length=255, blank=True, null=True)
-    fund_amount = models.DecimalField(max_digits=18, decimal_places=8)
-    currency = models.CharField(max_length=10, default='USD')
+    
+    # Token Information
     token_address = models.CharField(max_length=42, blank=True, null=True)
     token_name = models.CharField(max_length=50, blank=True, null=True)
     token_symbol = models.CharField(max_length=10, blank=True, null=True)
+    
+    # Schedule
     start_date = models.DateTimeField(default=timezone.now)
     end_date = models.DateTimeField(blank=True, null=True)
+    
+    # Contract Information
     contract_address = models.CharField(max_length=42, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Social Links
+    website = models.URLField(max_length=255, blank=True, null=True)
+    twitter = models.URLField(max_length=255, blank=True, null=True)
+    telegram = models.URLField(max_length=255, blank=True, null=True)
+    discord = models.URLField(max_length=255, blank=True, null=True)
+    github = models.URLField(max_length=255, blank=True, null=True)
+    
+    # Legal
+    terms_accepted = models.BooleanField(default=False)
+    kyc_completed = models.BooleanField(default=False)
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -463,4 +490,59 @@ class Comment(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.username} - {self.campaign.title}" 
+        return f"{self.user.username} - {self.campaign.title}"
+
+
+class TeamMember(models.Model):
+    """
+    Model for campaign team members
+    """
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='team_members')
+    name = models.CharField(max_length=100)
+    role = models.CharField(max_length=100)
+    bio = models.TextField()
+    image = models.ImageField(upload_to='team_members/', null=True, blank=True)
+    linkedin = models.URLField(max_length=255, blank=True, null=True)
+    twitter = models.URLField(max_length=255, blank=True, null=True)
+    github = models.URLField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.role} ({self.campaign.title})"
+
+    class Meta:
+        ordering = ['name']
+
+
+class Reward(models.Model):
+    """
+    Model for campaign rewards/perks
+    """
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='rewards')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    amount = models.DecimalField(max_digits=18, decimal_places=8)
+    quantity = models.IntegerField(null=True, blank=True)  # null means unlimited
+    claimed = models.IntegerField(default=0)
+    estimated_delivery = models.DateField(null=True, blank=True)
+    shipping_required = models.BooleanField(default=False)
+    shipping_locations = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.amount} {self.campaign.currency}"
+
+    @property
+    def available_quantity(self):
+        if self.quantity is None:
+            return float('inf')
+        return max(0, self.quantity - self.claimed)
+
+    @property
+    def is_sold_out(self):
+        return self.quantity is not None and self.claimed >= self.quantity
+
+    class Meta:
+        ordering = ['amount'] 

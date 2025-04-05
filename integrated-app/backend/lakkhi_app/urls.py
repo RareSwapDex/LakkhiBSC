@@ -18,6 +18,7 @@ campaign_router.register(r'comments', views.CommentViewSet, basename='campaign-c
 # Keep existing URL patterns
 urlpatterns = [
     path('api/create_campaign/', views.create_campaign, name='create_campaign'),
+    path('api/create_project/', views.create_project, name='create_project'),
     path('api/campaigns/', views.campaigns, name='campaigns'),
     path('api/campaigns/<int:id>/', views.campaign_detail, name='campaign_detail'),
     path('api/projects/<int:project_id>/update/', views.update_project, name='update_project'),

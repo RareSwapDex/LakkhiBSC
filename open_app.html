@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Launch Lakkhi App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .instructions {
+            max-width: 600px;
+            margin: 20px;
+            line-height: 1.5;
+            background-color: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>Launch Lakkhi Application</h1>
+    
+    <div class="instructions">
+        <p><strong>Step 1:</strong> Open a new terminal (not in VS Code) and run:</p>
+        <code>cd ~/projects/lakkhi-program/integrated-app/backend && source venv/bin/activate && python manage.py runserver</code>
+        
+        <p><strong>Step 2:</strong> Open another new terminal (not in VS Code) and run:</p>
+        <code>cd ~/projects/lakkhi-program/integrated-app/frontend && npm start</code>
+        
+        <p><strong>Step 3:</strong> Click the button below to open the app in your browser:</p>
+    </div>
+    
+    <a href="http://localhost:3000" target="_blank" class="button">Open Lakkhi App</a>
+    
+    <div class="instructions">
+        <p><strong>Important:</strong> Using separate terminals outside VS Code prevents the disconnection issues.</p>
+        <p>If you need to stop the servers, press <code>Ctrl+C</code> in each terminal window.</p>
+    </div>
+</body>
+</html> 

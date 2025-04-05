@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Kill any existing processes on ports 3000 and 8000
+echo "Stopping any existing servers..."
+pkill -f "node|react-scripts|python.*runserver" > /dev/null 2>&1
+
+# Clear any previous log files
+rm -f ~/projects/lakkhi-program/frontend.log ~/projects/lakkhi-program/backend.log
+
+echo "Starting backend server on port 8000..."
+cd ~/projects/lakkhi-program/integrated-app/backend
+source venv/bin/activate
+(python manage.py runserver 8000 > ~/projects/lakkhi-program/backend.log 2>&1) &
+echo "Backend server started! Log: ~/projects/lakkhi-program/backend.log"
+
+echo "Starting frontend server on port 3000..."
+cd ~/projects/lakkhi-program/integrated-app/frontend
+(npm start > ~/projects/lakkhi-program/frontend.log 2>&1) &
+echo "Frontend server started! Log: ~/projects/lakkhi-program/frontend.log"
+
+echo ""
+echo "Both servers are running in the background!"
+echo "* Frontend: http://localhost:3000"
+echo "* Backend:  http://localhost:8000"
+echo ""
+echo "To view logs:"
+echo "* Frontend: tail -f ~/projects/lakkhi-program/frontend.log"
+echo "* Backend:  tail -f ~/projects/lakkhi-program/backend.log"
+echo ""
+echo "To stop servers: pkill -f 'node|react-scripts|python.*runserver'" 
