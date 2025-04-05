@@ -1018,13 +1018,17 @@ def update_project(request, project_id):
     try:
         project = get_object_or_404(Project, id=project_id)
         
-        # Verify wallet ownership (simple check - a more secure implementation would use signatures)
+        # Verify wallet ownership - either project creator or contract owner can edit
         wallet_address = request.data.get('wallet_address')
-        if wallet_address and wallet_address.lower() != project.wallet_address.lower():
-            return Response(
-                {"success": False, "message": "Only the project owner can update this project"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        if wallet_address:
+            is_project_creator = wallet_address.lower() == project.wallet_address.lower()
+            is_contract_owner = project.contract_owner_address and wallet_address.lower() == project.contract_owner_address.lower()
+            
+            if not (is_project_creator or is_contract_owner):
+                return Response(
+                    {"success": False, "message": "Only the project creator or contract owner can update this project"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         
         # Only update fields that are provided and allowed to be updated
         # Core token fields (fund_amount, token_address, blockchain_chain) cannot be updated
@@ -1048,6 +1052,7 @@ def update_project(request, project_id):
                 "token_address": project.token_address,
                 "blockchain_chain": project.blockchain_chain,
                 "wallet_address": project.wallet_address,
+                "contract_owner_address": project.contract_owner_address,
                 "status": project.status
             }
         })

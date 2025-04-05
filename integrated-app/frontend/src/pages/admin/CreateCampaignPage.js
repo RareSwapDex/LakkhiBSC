@@ -24,6 +24,7 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
     funding: '',
     tokenAddress: '',
     blockchain: 'BSC', // Default to BSC
+    contractOwnerAddress: '', // Add contract owner address field
   });
 
   const [step, setStep] = useState(1);
@@ -52,6 +53,7 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
               funding: project.fund_amount ? project.fund_amount.toString() : '',
               tokenAddress: project.token_address || '',
               blockchain: project.blockchain_chain || 'BSC',
+              contractOwnerAddress: project.contract_owner_address || '',
             });
             
             // If we have token data, trigger validation
@@ -168,6 +170,11 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
     if (name === 'funding' && tokenValid && formValues.tokenAddress) {
       getTokenEquivalent(formValues.tokenAddress, value, formValues.blockchain);
     }
+    
+    // If updating contract owner address, validate it
+    if (name === 'contractOwnerAddress' && value) {
+      validateContractOwnerAddress(value);
+    }
   };
   
   // Handle token address changes
@@ -200,6 +207,20 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
     }
   };
   
+  // Validate the contract owner address format
+  const validateContractOwnerAddress = (address) => {
+    if (!address) return;
+    
+    // Simple validation for Ethereum address format (0x followed by 40 hex characters)
+    const isValidFormat = /^0x[a-fA-F0-9]{40}$/.test(address);
+    
+    if (!isValidFormat) {
+      setError('Invalid contract owner wallet address format. Must start with 0x followed by 40 hex characters.');
+    } else {
+      setError(null);
+    }
+  };
+  
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -208,6 +229,14 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
       setError('Please connect your wallet first');
       await connectWallet();
       return;
+    }
+    
+    // Validate contract owner address if provided
+    if (formValues.contractOwnerAddress) {
+      validateContractOwnerAddress(formValues.contractOwnerAddress);
+      if (error) {
+        return; // Stop submission if there's an error with the contract owner address
+      }
     }
     
     try {
@@ -224,8 +253,10 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
         formData.append('fund_amount', formValues.funding);
         formData.append('token_address', formValues.tokenAddress);
         formData.append('blockchain_chain', formValues.blockchain);
+        formData.append('contract_owner_address', formValues.contractOwnerAddress);
       }
       
+      // Always include wallet address for permission checks
       formData.append('wallet_address', account);
       
       let response;
@@ -380,6 +411,24 @@ const CreateCampaignPage = ({ isEditMode = false }) => {
                       disabled
                       readOnly
                     />
+                    <small className="text-muted">This is the address that will create the campaign.</small>
+                  </Form.Group>
+                  
+                  <Form.Group className="mb-4">
+                    <Form.Label>Contract Owner Wallet Address (Optional)</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="contractOwnerAddress"
+                      value={formValues.contractOwnerAddress}
+                      onChange={handleInputChange}
+                      placeholder="Enter the wallet address that will control the funds (leave empty to use your address)"
+                      disabled={isEditMode}
+                      readOnly={isEditMode}
+                    />
+                    <small className="text-muted">
+                      If specified, this wallet address will control the funds and have access to fund release functionality.
+                      {isEditMode && " Contract owner cannot be changed after campaign creation."}
+                    </small>
                   </Form.Group>
                   
                   <div className="d-grid gap-2">

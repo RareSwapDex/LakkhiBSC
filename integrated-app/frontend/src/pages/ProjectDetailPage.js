@@ -13,6 +13,7 @@ const ProjectDetailPage = () => {
   const [error, setError] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [isContractOwner, setIsContractOwner] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
   
   useEffect(() => {
     const fetchProject = async () => {
@@ -24,11 +25,13 @@ const ProjectDetailPage = () => {
           // Check if current wallet address matches the project owner
           if (account && account.toLowerCase() === response.project.wallet_address?.toLowerCase()) {
             setIsOwner(true);
+            setCanEdit(true);
           }
           // Check if current wallet address matches the contract owner (who can release funds)
           if (account && response.project.contract_owner_address &&
               account.toLowerCase() === response.project.contract_owner_address?.toLowerCase()) {
             setIsContractOwner(true);
+            setCanEdit(true);
           }
         } else {
           setError(response.message || 'Failed to fetch project');
@@ -80,7 +83,7 @@ const ProjectDetailPage = () => {
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h1>{project.title}</h1>
             <div>
-              {isOwner && (
+              {canEdit && (
                 <Link to={`/edit-campaign/${project.id}`} className="me-2">
                   <Button variant="outline-primary">Edit Campaign</Button>
                 </Link>
@@ -171,6 +174,11 @@ const ProjectDetailPage = () => {
                   <small className="text-muted">Campaign created by:</small>
                   <br />
                   <code className="user-select-all">{project.wallet_address}</code>
+                  {isOwner && (
+                    <div className="mt-2">
+                      <Badge bg="info">You are the project creator</Badge>
+                    </div>
+                  )}
                 </Card.Text>
               </Card.Body>
             </Card>
@@ -184,6 +192,11 @@ const ProjectDetailPage = () => {
                   <small className="text-muted">Funds controlled by:</small>
                   <br />
                   <code className="user-select-all">{project.contract_owner_address}</code>
+                  {isContractOwner && (
+                    <div className="mt-2">
+                      <Badge bg="info">You are the fund controller</Badge>
+                    </div>
+                  )}
                   {project.contract_owner_address.toLowerCase() !== project.wallet_address.toLowerCase() && (
                     <div className="mt-2">
                       <Alert variant="info" className="p-2 small">
