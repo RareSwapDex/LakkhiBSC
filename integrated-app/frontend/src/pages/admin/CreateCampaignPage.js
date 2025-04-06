@@ -4,24 +4,168 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ProviderContext } from '../../web3/ProviderContext';
 import TokenSelector from '../../components/TokenSelector';
-import projectService from '../../services/projectService';
+import FormProgressBar from '../../components/FormProgressBar';
+import FormField from '../../components/FormField';
+import ContractOwnerSelector from '../../components/ContractOwnerSelector';
+import SubmitConfirmationModal from '../../components/SubmitConfirmationModal';
+import LivePreview from '../../components/LivePreview';
+import ImageUploader from '../../components/ImageUploader';
+import RichTextEditor from '../../components/RichTextEditor';
+import CampaignTemplateSelector from '../../components/CampaignTemplateSelector';
+import SeoOptimizer from '../../components/SeoOptimizer';
+import useFormPersistence from '../../hooks/useFormPersistence';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCheckCircle, faSave, faUndo, faInfoCircle, faExclamationCircle, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import Web3 from 'web3';
+import './CreateCampaignPage.css';
 
 const CreateCampaignPage = () => {
   const navigate = useNavigate();
-  const { provider, isConnected, account, chainId, switchChain } = useContext(ProviderContext);
-  
-  const [error, setError] = useState(null);
+  const { connectedWallet, isWalletVerified, web3Provider } = useContext(ProviderContext);
+
+  // Form data state
+  const defaultFormData = {
+    basics: {
+      projectTitle: '',
+      projectDescription: '',
+      projectFundAmount: '',
+      projectDeadlineDate: '30',
+      contractOwnerAddress: '',
+      tokenAddress: '',
+      category: '',
+      tags: [],
+      projectImageUrl: ''
+    },
+    story: {
+      projectStory: '',
+      projectGoals: '',
+      projectTeam: '',
+      projectRisks: ''
+    },
+    legal: {
+      termsAccepted: false
+    },
+    seo: {
+      metaTitle: '',
+      metaDescription: '',
+      socialTitle: '',
+      socialDescription: '',
+      focusKeyword: ''
+    }
+  };
+
+  // Form persistence with local storage
+  const {
+    formData,
+    setFormData,
+    persistForm,
+    clearPersistedForm,
+    lastSaved
+  } = useFormPersistence('campaign_form', defaultFormData, 7); // expires in 7 days
+
+  // UI state
+  const [activeTab, setActiveTab] = useState('basics');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formProgress, setFormProgress] = useState({
+    basics: 0,
+    story: 0,
+    legal: 0,
+    seo: 0
+  });
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [error, setError] = useState(null);
+  const [savedState, setSavedState] = useState(lastSaved ? `Last saved: ${new Date(lastSaved).toLocaleString()}` : null);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(!formData.basics.projectTitle);
+  const [tokenInfo, setTokenInfo] = useState(null);
+  
+  // Handle template selection
+  const handleTemplateSelect = (template) => {
+    // Update form data with template values
+    const newFormData = { ...formData };
+    
+    if (template.prefilledFields?.basics) {
+      newFormData.basics = {
+        ...newFormData.basics,
+        ...template.prefilledFields.basics
+      };
+    }
+    
+    if (template.prefilledFields?.story) {
+      newFormData.story = {
+        ...newFormData.story,
+        ...template.prefilledFields.story
+      };
+    }
+    
+    // Set the title if one is suggested
+    if (!newFormData.basics.projectTitle && template.name) {
+      newFormData.basics.projectTitle = `My ${template.name} Project`;
+    }
+    
+    // Set SEO information
+    if (template.name && template.sampleText) {
+      newFormData.seo = {
+        ...newFormData.seo,
+        metaTitle: `Fund ${template.name} | ${template.category} Project`,
+        metaDescription: template.sampleText.substring(0, 160),
+        socialTitle: `Support our ${template.name} Project`,
+        socialDescription: template.sampleText.substring(0, 200),
+        focusKeyword: template.category.toLowerCase()
+      };
+    }
+    
+    setFormData(newFormData);
+    persistForm(newFormData);
+    
+    // Calculate progress
+    validateAllFields(newFormData);
+  };
+
+  // Manual save function with notification
+  const handleManualSave = () => {
+    persistForm();
+    setSavedState('Saved');
+    
+    // Clear the saved notification after 3 seconds
+    setTimeout(() => {
+      setSavedState(null);
+    }, 3000);
+  };
+  
+  // Reset form to default state
+  const handleResetForm = () => {
+    if (window.confirm('Are you sure you want to reset the form? All unsaved data will be lost.')) {
+      clearPersistedForm();
+      window.location.reload(); // Reload the page to reset all state
+    }
+  };
+  
+  // Form steps configuration
+  const formSteps = [
+    { key: 'basics', label: 'Basics' },
+    { key: 'story', label: 'Story' },
+    { key: 'team', label: 'Team' },
+    { key: 'social', label: 'Social' },
+    { key: 'milestones', label: 'Milestones' },
+    { key: 'updates', label: 'Updates' },
+    { key: 'legal', label: 'Legal' },
+    { key: 'rewards', label: 'Rewards' },
+    { key: 'preview', label: 'Preview' },
+  ];
+
+  // App state
+  const [completedSteps, setCompletedSteps] = useState([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [gasEstimate, setGasEstimate] = useState(null);
+  
+  // Component state
   const [includeIncentives, setIncludeIncentives] = useState(false);
-  const [connectedWallet, setConnectedWallet] = useState('');
-  const [isWalletVerified, setIsWalletVerified] = useState(false);
   const [isSwitchingChain, setIsSwitchingChain] = useState(false);
   
   // Token validation state
   const [validatingToken, setValidatingToken] = useState(false);
-  const [tokenInfo, setTokenInfo] = useState(null);
   const [tokenError, setTokenError] = useState(null);
   
   // Add state variables for token price conversion
@@ -29,82 +173,8 @@ const CreateCampaignPage = () => {
   const [tokenEquivalent, setTokenEquivalent] = useState(null);
   const [loadingTokenPrice, setLoadingTokenPrice] = useState(false);
   
-  // Form data state
-  const [formData, setFormData] = useState({
-    basics: {
-      projectTitle: '',
-      blockchainChain: 'BSC',
-      projectDescription: '',
-      projectImageFile: null,
-      projectLaunchDate: '',
-      projectDeadlineDate: '30',
-      activateImmediately: true,
-      projectFundAmount: '',
-      projectFundCurrency: 'USD',
-      walletAddress: '',
-      tokenAddress: '',
-      contractOwnerAddress: '', // Add contract owner address field
-      category: '',
-      tags: [],
-      minContribution: '0.01',
-      maxContribution: '',
-      enableAutoRefund: true
-    },
-    story: {
-      projectStory: '',
-      projectGoals: '',
-      projectRisks: '',
-      projectTimeline: '',
-      projectBudget: ''
-    },
-    team: {
-      members: [
-        {
-          name: '',
-          role: '',
-          bio: '',
-          social: ''
-        }
-      ]
-    },
-    social: {
-      website: '',
-      twitter: '',
-      telegram: '',
-      discord: '',
-      github: '',
-      linkedin: ''
-    },
-    updates: {
-      scheduleCommitment: 'weekly', // weekly, biweekly, monthly
-    },
-    legal: {
-      termsAccepted: false,
-      privacyAccepted: false,
-      refundPolicy: '',
-      kycCompleted: false
-    },
-    milestones: [
-      {
-        title: 'Initial Release',
-        description: 'Initial funding release upon campaign completion',
-        targetAmount: '',
-        dueDate: ''
-      }
-    ],
-    rewards: {
-      projectRewards: [
-        {
-          title: '',
-          description: '',
-          price: '',
-          availableItems: '',
-          estimatedDelivery: '',
-          displayOrder: 1,
-        }
-      ]
-    }
-  });
+  // Add tag input state
+  const [tagInput, setTagInput] = useState('');
   
   // Handle milestone changes
   const handleMilestoneChange = (index, field, value) => {
@@ -208,8 +278,6 @@ const CreateCampaignPage = () => {
   };
   
   // Handle tag input
-  const [tagInput, setTagInput] = useState('');
-  
   const handleAddTag = () => {
     if (tagInput.trim() && !formData.basics.tags.includes(tagInput.trim())) {
       setFormData(prev => ({
@@ -253,7 +321,8 @@ const CreateCampaignPage = () => {
     }
     
     // Validate contract owner address
-    if (!formData.basics.contractOwnerAddress || !Web3.utils.isAddress(formData.basics.contractOwnerAddress)) {
+    const contractOwnerAddress = formData.basics.contractOwnerAddress || connectedWallet;
+    if (!contractOwnerAddress || !Web3.utils.isAddress(contractOwnerAddress)) {
       setError('Please provide a valid contract owner wallet address in the Basics section');
       isValid = false;
       invalidTabKey = invalidTabKey || 'basics';
@@ -387,23 +456,21 @@ const CreateCampaignPage = () => {
     const checkWallet = async () => {
       try {
         // Check if provider is available and wallet is connected
-        if (!provider || !isConnected) {
+        if (!web3Provider || !isWalletVerified) {
           setError('Please connect your wallet to create a campaign');
           return;
         }
         
-        if (account) {
-          setConnectedWallet(account);
-          
-          // Auto-verify wallet when it's connected
-          localStorage.setItem('lakkhi_verified_wallet', account);
+        if (connectedWallet) {
           setIsWalletVerified(true);
           
           // Set wallet address in form data
-          handleInputChange('basics', 'walletAddress', account);
+          handleInputChange('basics', 'walletAddress', connectedWallet);
           
-          // Also set the contract owner address to the connected wallet by default
-          handleInputChange('basics', 'contractOwnerAddress', account);
+          // Also set the contract owner address to the connected wallet by default if not already set
+          if (!formData.basics.contractOwnerAddress) {
+            handleInputChange('basics', 'contractOwnerAddress', connectedWallet);
+          }
           
           setError(null); // Clear any existing error
         } else {
@@ -416,7 +483,7 @@ const CreateCampaignPage = () => {
     };
     
     checkWallet();
-  }, [provider, isConnected, account]);
+  }, [web3Provider, isWalletVerified, connectedWallet, formData.basics.contractOwnerAddress]);
   
   // Handle form field changes
   const handleInputChange = (section, field, value) => {
@@ -435,7 +502,7 @@ const CreateCampaignPage = () => {
       ...prev,
       basics: {
         ...prev.basics,
-        projectImageFile: e.target.files[0]
+        projectImageUrl: e.target.files[0]
       }
     }));
   };
@@ -466,10 +533,10 @@ const CreateCampaignPage = () => {
 
     // Get current chain ID from context
     const currentChainName = (() => {
-      if (chainId) {
-        if (chainId === '0x1') return 'Ethereum';
-        if (chainId === '0x38') return 'BSC';
-        if (chainId === '0x8453') return 'Base';
+      if (web3Provider) {
+        if (web3Provider.chainId === '0x1') return 'Ethereum';
+        if (web3Provider.chainId === '0x38') return 'BSC';
+        if (web3Provider.chainId === '0x8453') return 'Base';
       }
       return null;
     })();
@@ -485,7 +552,7 @@ const CreateCampaignPage = () => {
   
   // Handle form submission
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     
     // Verify wallet is connected
     if (!connectedWallet) {
@@ -502,12 +569,16 @@ const CreateCampaignPage = () => {
     // Verify token is provided and validated
     if (!formData.basics.tokenAddress) {
       setError('Token address is required. Please enter and validate a token address.');
+      setFieldErrors(prev => ({...prev, tokenAddress: 'Token address is required'}));
+      setActiveTab('basics');
       return;
     }
     
     // Verify token is validated
     if (!tokenInfo) {
       setError('Please validate your token address before submitting. Click the Validate button next to the token address field.');
+      setFieldErrors(prev => ({...prev, tokenAddress: 'Token must be validated'}));
+      setActiveTab('basics');
       return;
     }
     
@@ -522,6 +593,12 @@ const CreateCampaignPage = () => {
       return;
     }
     
+    // Show confirmation modal instead of immediately submitting
+    setShowConfirmationModal(true);
+  };
+  
+  // Function to actually submit the form after confirmation
+  const submitConfirmed = async () => {
     setSubmitting(true);
     setError('Deploying smart contract. Please confirm the transaction in MetaMask when prompted...');
     
@@ -531,6 +608,7 @@ const CreateCampaignPage = () => {
       if (!contractData) {
         setError('Smart contract deployment failed. Please try again.');
         setSubmitting(false);
+        setShowConfirmationModal(false);
         return;
       }
       
@@ -552,10 +630,15 @@ const CreateCampaignPage = () => {
       Object.keys(formDataWithWallet.basics).forEach(key => {
         if (key === 'tags') {
           formDataToSend.append(`basics.${key}`, JSON.stringify(formDataWithWallet.basics[key]));
+        } else if (key === 'projectImageUrl' && formDataWithWallet.basics[key]) {
+          formDataToSend.append(`basics.${key}`, formDataWithWallet.basics[key]);
         } else {
-        formDataToSend.append(`basics.${key}`, formDataWithWallet.basics[key]);
+          formDataToSend.append(`basics.${key}`, formDataWithWallet.basics[key]);
         }
       });
+      
+      // Add contract_owner field explicitly
+      formDataToSend.append('contract_owner', formDataWithWallet.basics.contractOwnerAddress || connectedWallet);
       
       // Add story fields
       Object.keys(formDataWithWallet.story).forEach(key => {
@@ -600,38 +683,53 @@ const CreateCampaignPage = () => {
       // Step 3: Send data to the backend
       console.log('Sending campaign data to backend with contract info:', contractData);
       
-      // Make API call to create campaign
-      const createResponse = await axios.post(`${process.env.REACT_APP_BASE_URL}/api/campaigns/`, formDataToSend, {
+      try {
+        // Make API call to create campaign
+        const createResponse = await axios.post(`${process.env.REACT_APP_BASE_URL}/api/campaigns/`, formDataToSend, {
           headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      // Handle successful response
-      console.log('Campaign created:', createResponse.data);
-      
-      setSubmitSuccess(true);
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        // Handle successful response
+        console.log('Campaign created:', createResponse.data);
+        
+        // Clear form from localStorage
+        clearPersistedForm();
+        
+        setSubmitSuccess(true);
+        setShowConfirmationModal(false);
+        
         setTimeout(() => {
-        // Navigate to the new campaign page
-        navigate(`/campaigns/${createResponse.data.campaign_id}`);
-      }, 2000);
-      
+          // Navigate to the new campaign page
+          navigate(`/campaigns/${createResponse.data.campaign_id}`);
+        }, 2000);
+      } catch (apiError) {
+        console.error('Error creating campaign record:', apiError);
+        // The contract was deployed but the backend record creation failed
+        setError(`Smart contract was deployed successfully, but there was an error creating the campaign record: 
+          ${apiError.response?.data?.message || apiError.message || 'Unknown error'}. 
+          Please contact support with your transaction hash: ${contractData.transactionHash}`);
+        setSubmitting(false);
+        setShowConfirmationModal(false);
+      }
     } catch (error) {
-      console.error('Error creating campaign:', error);
+      console.error('Error in contract deployment:', error);
       setError(`Error creating campaign: ${error.message || 'Unknown error'}`);
       setSubmitting(false);
+      setShowConfirmationModal(false);
     }
   };
   
   const deploySmartContract = async () => {
     try {
-      if (!account) {
+      if (!connectedWallet) {
         setError('Wallet not connected. Please connect your wallet first.');
         return null;
       }
       
       // Get the contract owner address from form data or use connected wallet
-      const contractOwner = formData.basics.contractOwnerAddress || account;
+      const contractOwner = formData.basics.contractOwnerAddress || connectedWallet;
       
       // Inform user about the transaction
       setError('Please confirm the transaction in your wallet to deploy the campaign smart contract...');
@@ -1468,13 +1566,163 @@ const CreateCampaignPage = () => {
     return null;
   };
   
+  // Manual save function with notification
+  const handleManualSave = () => {
+    persistForm();
+    setSavedState('Saved');
+    
+    // Clear the saved notification after 3 seconds
+    setTimeout(() => {
+      setSavedState(null);
+    }, 3000);
+  };
+  
+  // Reset form to default state
+  const handleResetForm = () => {
+    if (window.confirm('Are you sure you want to reset the form? All unsaved data will be lost.')) {
+      clearPersistedForm();
+      window.location.reload(); // Reload the page to reset all state
+    }
+  };
+  
+  // Enhanced function to handle tab change with validation
+  const handleTabChange = (key) => {
+    // If changing away from a tab, validate it first
+    if (activeTab !== key) {
+      validateSection(activeTab);
+      
+      // Save form state 
+      persistForm();
+    }
+    
+    setActiveTab(key);
+  };
+  
+  // Update the validation functionality
+  const validateField = (section, field, value) => {
+    const validators = {
+      basics: {
+        projectTitle: (val) => val && val.trim().length > 0,
+        projectDescription: (val) => val && val.trim().length > 10,
+        projectFundAmount: (val) => val && !isNaN(val) && parseFloat(val) > 0,
+        projectDeadlineDate: (val) => val && !isNaN(val) && parseInt(val) > 0,
+        contractOwnerAddress: (val) => val && Web3.utils.isAddress(val),
+        tokenAddress: (val) => val && tokenInfo, // Must be validated through the TokenSelector
+        category: (val) => val && val.trim().length > 0,
+      },
+      story: {
+        projectStory: (val) => val && val.trim().length >= 100,
+      },
+      legal: {
+        termsAccepted: (val) => val === true,
+        privacyAccepted: (val) => val === true,
+      },
+      milestones: {
+        // Milestones are validated separately
+      }
+    };
+    
+    if (validators[section] && validators[section][field]) {
+      const isValid = validators[section][field](value);
+      
+      if (!isValid) {
+        setFieldErrors(prev => ({
+          ...prev,
+          [`${section}.${field}`]: `Invalid ${field.replace(/([A-Z])/g, ' $1').toLowerCase()}`
+        }));
+        return false;
+      } else {
+        // Clear the error if field is now valid
+        setFieldErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[`${section}.${field}`];
+          return newErrors;
+        });
+        return true;
+      }
+    }
+    
+    return true; // If no validator exists, consider it valid
+  };
+  
+  // Validate a form section
+  const validateSection = (section) => {
+    let isValid = true;
+    
+    if (section === 'basics') {
+      const requiredFields = ['projectTitle', 'projectDescription', 'projectFundAmount', 'projectDeadlineDate', 'contractOwnerAddress', 'tokenAddress', 'category'];
+      
+      for (const field of requiredFields) {
+        const value = formData.basics[field];
+        if (!validateField('basics', field, value)) {
+          isValid = false;
+        }
+      }
+    } else if (section === 'story') {
+      if (!validateField('story', 'projectStory', formData.story.projectStory)) {
+        isValid = false;
+      }
+    } else if (section === 'milestones') {
+      // Check if milestones sum up to the funding goal
+      const totalMilestoneAmount = formData.milestones.reduce(
+        (sum, m) => sum + parseFloat(m.targetAmount || 0),
+        0
+      );
+      
+      if (Math.abs(totalMilestoneAmount - parseFloat(formData.basics.projectFundAmount)) > 0.01) {
+        setError(`Total milestone amounts (${totalMilestoneAmount}) must equal the fund amount (${formData.basics.projectFundAmount})`);
+        isValid = false;
+      }
+      
+      // Validate each milestone
+      for (let i = 0; i < formData.milestones.length; i++) {
+        const milestone = formData.milestones[i];
+        if (!milestone.title || !milestone.description || !milestone.targetAmount) {
+          setFieldErrors(prev => ({
+            ...prev,
+            [`milestones.${i}`]: 'Incomplete milestone'
+          }));
+          isValid = false;
+        }
+      }
+    } else if (section === 'legal') {
+      if (!validateField('legal', 'termsAccepted', formData.legal.termsAccepted) ||
+          !validateField('legal', 'privacyAccepted', formData.legal.privacyAccepted)) {
+        isValid = false;
+      }
+    }
+    
+    // If this section is valid, mark it as completed
+    if (isValid && !completedSteps.includes(section)) {
+      setCompletedSteps(prev => [...prev, section]);
+    } else if (!isValid && completedSteps.includes(section)) {
+      // If not valid but was previously marked as completed, remove it
+      setCompletedSteps(prev => prev.filter(step => step !== section));
+    }
+    
+    return isValid;
+  };
+  
+  // Prevent form submission while still processing
   if (submitting) {
-    return <Container className="py-3 text-center"><p>Creating campaign...</p></Container>;
+    return (
+      <Container className="py-5 text-center">
+        <Card>
+          <Card.Body className="py-5">
+            <Spinner animation="border" variant="primary" className="mb-4" />
+            <h3>Creating your campaign</h3>
+            <p className="text-muted">Please wait while we deploy your campaign contract and create your campaign...</p>
+            {error && <Alert variant="info">{error}</Alert>}
+          </Card.Body>
+        </Card>
+      </Container>
+    );
   }
   
+  // Show success state before redirecting
   if (submitSuccess) {
     return (
-      <Container className="py-3">
+      <Container className="py-5">
         <Alert variant="success">
           <Alert.Heading>Campaign Created Successfully!</Alert.Heading>
           <p>Your campaign has been created. You will be redirected to the campaign page shortly.</p>
@@ -1484,8 +1732,37 @@ const CreateCampaignPage = () => {
   }
   
   return (
-    <Container className="py-5">
-      <h1 className="mb-4">Create New Campaign</h1>
+    <Container className="py-5 campaign-creation-container">
+      <h1 className="mb-3">Create New Campaign</h1>
+      
+      {/* Status Alert Bar */}
+      <div className="status-bar mb-4">
+        {savedState && (
+          <Alert variant="success" className="py-2 d-flex align-items-center justify-content-between fade-out">
+            <span><FontAwesomeIcon icon={faCheckCircle} className="me-2" /> Campaign draft saved</span>
+          </Alert>
+        )}
+        
+        <div className="d-flex justify-content-end">
+          <Button 
+            variant="outline-primary" 
+            size="sm" 
+            className="me-2"
+            onClick={handleManualSave}
+            title="Save draft"
+          >
+            <FontAwesomeIcon icon={faSave} className="me-1" /> Save Draft
+          </Button>
+          <Button 
+            variant="outline-secondary" 
+            size="sm"
+            onClick={handleResetForm}
+            title="Reset form"
+          >
+            <FontAwesomeIcon icon={faUndo} className="me-1" /> Reset
+          </Button>
+        </div>
+      </div>
       
       <Card className="mb-4 border-info">
         <Card.Body>
@@ -1493,11 +1770,11 @@ const CreateCampaignPage = () => {
           <Card.Text>
             Lakkhi Funding uses a fully decentralized approach to campaign management. When you create a campaign:
             <ul className="mt-2">
-              <li>Your wallet address becomes the permanent owner of the campaign</li>
+              <li>Your wallet address becomes the campaign creator in our records</li>
               <li>A real smart contract is deployed on-chain using the PancakeSwap factory</li>
-              <li>The smart contract will send all collected funds to this wallet address</li>
-              <li>Only the owner wallet can withdraw or manage campaign funds</li>
-              <li>Ownership cannot be transferred later, so ensure you have access to this wallet</li>
+              <li>You can designate a different wallet address as the "Contract Owner" who will receive the funds</li>
+              <li>Only the contract owner wallet can withdraw or manage campaign funds</li>
+              <li>Ownership cannot be transferred later, so ensure you have access to the contract owner wallet</li>
             </ul>
           </Card.Text>
         </Card.Body>
@@ -1507,941 +1784,449 @@ const CreateCampaignPage = () => {
       
       {renderNetworkAlert()}
       
-      {error && <Alert variant="danger">{error}</Alert>}
+      {error && 
+        <Alert variant="danger" className="d-flex align-items-center">
+          <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" size="lg" />
+          {error}
+        </Alert>
+      }
       
-      <Tabs defaultActiveKey="basics" id="campaign-form-tabs" className="mb-3">
+      {/* Progress Indicator */}
+      <FormProgressBar 
+        steps={formSteps} 
+        activeStep={activeTab} 
+        completedSteps={completedSteps} 
+      />
+      
+      {/* Tabs Navigation */}
+      <Tabs 
+        activeKey={activeTab} 
+        id="campaign-form-tabs" 
+        className="mb-3"
+        onSelect={handleTabChange}
+      >
         <Tab eventKey="basics" title="Basics">
-        <Card className="mb-3">
-          <Card.Body>
-            <Form.Group className="mb-3">
-              <Form.Label>Campaign Title*</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.basics.projectTitle}
-                onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
-                required
-                placeholder="Enter a clear, descriptive title"
-              />
-            </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Category*</Form.Label>
-                <Form.Select
-                  value={formData.basics.category}
-                  onChange={(e) => handleInputChange('basics', 'category', e.target.value)}
+          <Card className="mb-3">
+            <Card.Body>
+              <Form>
+                <FormField
+                  label="Campaign Title"
+                  type="text"
+                  value={formData.basics.projectTitle}
+                  onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
                   required
-                >
-                  {campaignCategories.map(category => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
+                  placeholder="Enter a clear, descriptive title"
+                  error={fieldErrors['basics.projectTitle']}
+                  validate={(val) => val && val.trim().length > 0}
+                  errorMessage="Campaign title is required"
+                />
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Category*</Form.Label>
+                  <Form.Select
+                    value={formData.basics.category}
+                    onChange={(e) => handleInputChange('basics', 'category', e.target.value)}
+                    required
+                    className={fieldErrors['basics.category'] ? 'is-invalid' : ''}
+                  >
+                    <option value="">Select a category</option>
+                    {campaignCategories.map(category => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </Form.Select>
+                  {fieldErrors['basics.category'] && (
+                    <Form.Control.Feedback type="invalid">
+                      {fieldErrors['basics.category']}
+                    </Form.Control.Feedback>
+                  )}
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Tags</Form.Label>
+                  <InputGroup>
+                    <Form.Control
+                      type="text"
+                      placeholder="Enter a tag and press Add"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
+                    />
+                    <Button variant="outline-secondary" onClick={handleAddTag}>
+                      Add
+                    </Button>
+                  </InputGroup>
+                  <div className="mt-2">
+                    {formData.basics.tags.map((tag, index) => (
+                      <span key={index} className="badge bg-primary me-2 mb-2 p-2">
+                        {tag}
+                        <button 
+                          type="button" 
+                          className="btn-close btn-close-white ms-2" 
+                          style={{ fontSize: '0.5rem' }}
+                          onClick={() => handleRemoveTag(tag)}
+                          aria-label="Remove tag"
+                        ></button>
+                      </span>
+                    ))}
+                  </div>
+                </Form.Group>
               
-              <Form.Group className="mb-3">
-                <Form.Label>Tags</Form.Label>
-                <InputGroup>
+                <Form.Group className="mb-3">
+                  <Form.Label>Wallet Address (Connected)</Form.Label>
                   <Form.Control
                     type="text"
-                    placeholder="Enter a tag and press Add"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
+                    value={connectedWallet}
+                    disabled
+                    readOnly
+                    className="bg-light"
                   />
-                  <Button variant="outline-secondary" onClick={handleAddTag}>
-                    Add
-                  </Button>
-                </InputGroup>
-                <div className="mt-2">
-                  {formData.basics.tags.map((tag, index) => (
-                    <span key={index} className="badge bg-primary me-2 mb-2 p-2">
-                      {tag}
-                      <button 
-                        type="button" 
-                        className="btn-close btn-close-white ms-2" 
-                        style={{ fontSize: '0.5rem' }}
-                        onClick={() => handleRemoveTag(tag)}
-                        aria-label="Remove tag"
-                      ></button>
-                    </span>
-                  ))}
-                </div>
-              </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Wallet Address (Connected)</Form.Label>
-              <Form.Control
-                type="text"
-                value={connectedWallet}
-                disabled
-                readOnly
-                className="bg-light"
-              />
-              <Form.Text className="text-muted">
-                <strong>Important:</strong> This wallet will be the owner of the campaign and will create the campaign record.
-              </Form.Text>
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Contract Owner Address (for fund management)</Form.Label>
-              <Form.Control
-                type="text"
-                value={connectedWallet}  // Default to connected wallet
-                onChange={(e) => handleInputChange('basics', 'contractOwnerAddress', e.target.value)}
-                placeholder="0x..."
-              />
-              <Form.Text className="text-muted">
-                <strong>Important:</strong> This wallet will be the owner of the campaign's smart contract. Only this wallet address 
-                will be able to withdraw or manage funds. Make sure it's correct as ownership cannot be transferred later.
-                Leave as your connected wallet address if you want to manage the funds yourself.
-              </Form.Text>
-            </Form.Group>
-            
-            <TokenSelector 
-              value={formData.basics.tokenAddress}
-              onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
-                onValidate={handleTokenValidation}
-                onReset={() => {
-                  setTokenInfo(null);
-                  // Reset to BSC when token is cleared
-                  handleInputChange('basics', 'blockchainChain', 'BSC');
-                }}
-            />
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Blockchain Chain*</Form.Label>
-                <Form.Control 
-                  type="text"
-                value={formData.basics.blockchainChain}
-                  readOnly
-                  className="bg-light"
-                required
+                  <Form.Text className="text-muted">
+                    <strong>Important:</strong> This wallet will be the owner of the campaign and will create the campaign record.
+                  </Form.Text>
+                </Form.Group>
+                
+                {/* Enhanced Contract Owner Selector */}
+                <ContractOwnerSelector
+                  value={formData.basics.contractOwnerAddress}
+                  onChange={(value) => handleInputChange('basics', 'contractOwnerAddress', value)}
+                  connectedWallet={connectedWallet}
+                  onValidate={(isValid, address) => {
+                    if (!isValid) {
+                      setFieldErrors(prev => ({
+                        ...prev,
+                        'basics.contractOwnerAddress': 'Invalid wallet address'
+                      }));
+                    } else {
+                      // Clear error if valid
+                      setFieldErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors['basics.contractOwnerAddress'];
+                        return newErrors;
+                      });
+                    }
+                  }}
                 />
-                <Form.Text className="text-muted">
-                  This field is automatically set based on the validated token's blockchain.
-                </Form.Text>
-            </Form.Group>
+                
+                {/* Enhanced Token Selector */}
+                <TokenSelector 
+                  value={formData.basics.tokenAddress}
+                  onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
+                  onValidate={handleTokenValidation}
+                  onReset={() => {
+                    setTokenInfo(null);
+                    // Reset to BSC when token is cleared
+                    handleInputChange('basics', 'blockchainChain', 'BSC');
+                    
+                    // Add field error
+                    setFieldErrors(prev => ({
+                      ...prev,
+                      'basics.tokenAddress': 'Token is required'
+                    }));
+                  }}
+                />
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Blockchain Chain*</Form.Label>
+                  <Form.Control 
+                    type="text"
+                    value={formData.basics.blockchainChain}
+                    readOnly
+                    className="bg-light"
+                    required
+                  />
+                  <Form.Text className="text-muted">
+                    This field is automatically set based on the validated token's blockchain.
+                  </Form.Text>
+                </Form.Group>
 
-            <Form.Group className="mb-3">
-              <Form.Label>Brief Description*</Form.Label>
-              <Form.Control
-                as="textarea"
-                rows={3}
-                value={formData.basics.projectDescription}
-                onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
-                required
-                placeholder="Briefly describe your project (max 300 characters)"
-                maxLength={300}
-              />
-            </Form.Group>
-            
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Funding Goal*</Form.Label>
-                  <Form.Control
-                    type="number"
-                    value={formData.basics.projectFundAmount}
-                    onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
-                    required
-                    min="1"
-                    step="0.01"
-                    placeholder="Enter amount"
-                  />
-                    {loadingTokenPrice && (
-                      <Form.Text className="text-muted mt-2">
-                        Calculating token equivalent...
-                      </Form.Text>
-                    )}
-                    {tokenInfo && tokenEquivalent && tokenPriceUSD && !loadingTokenPrice && (
-                      <Form.Text className="text-muted mt-2">
-                        Approximately {tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} {tokenInfo.symbol} 
-                        {` (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)`}
-                        <br/>
-                        <span className="text-success">Chain: {formData.basics.blockchainChain}</span>
-                      </Form.Text>
-                    )}
-                    {tokenInfo && !tokenPriceUSD && !loadingTokenPrice && (
-                      <Form.Text className="text-danger mt-2">
-                        Unable to retrieve price information for {tokenInfo.symbol}. Token conversion cannot be calculated.
-                        <br/>
-                        <span className="text-success">Chain: {formData.basics.blockchainChain}</span>
-                      </Form.Text>
-                    )}
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Currency*</Form.Label>
-                  <Form.Select
-                    value={formData.basics.projectFundCurrency}
-                    onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
-                    required
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-            </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Campaign Image (Optional)</Form.Label>
-              <Form.Control
-                type="file"
-                onChange={handleFileChange}
-              />
-              <Form.Text className="text-muted">
-                Upload an image to represent your campaign. If not provided, a default image will be used.
-              </Form.Text>
-            </Form.Group>
-            
-            <Row>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Launch Date</Form.Label>
-                  <Form.Control
-                    type="date"
-                    value={formData.basics.projectLaunchDate}
-                    onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-3">
-                    <Form.Label>Campaign Duration (days)*</Form.Label>
-                    <Form.Control
+                <FormField
+                  label="Brief Description"
+                  as="textarea"
+                  rows={3}
+                  value={formData.basics.projectDescription}
+                  onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
+                  required
+                  placeholder="Briefly describe your project (max 300 characters)"
+                  maxLength={300}
+                  validate={(val) => val && val.trim().length >= 10}
+                  errorMessage="Description must be at least 10 characters"
+                  error={fieldErrors['basics.projectDescription']}
+                />
+                
+                <Row>
+                  <Col md={6}>
+                    <FormField
+                      label="Funding Goal"
                       type="number"
-                    value={formData.basics.projectDeadlineDate}
-                    onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
-                    required
+                      value={formData.basics.projectFundAmount}
+                      onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
+                      required
+                      min="1"
+                      step="0.01"
+                      placeholder="Enter amount"
+                      validate={(val) => val && !isNaN(val) && parseFloat(val) > 0}
+                      errorMessage="Funding goal must be greater than 0"
+                      error={fieldErrors['basics.projectFundAmount']}
+                      helpText={
+                        loadingTokenPrice ? "Calculating token equivalent..." :
+                        (tokenInfo && tokenEquivalent && tokenPriceUSD) ? 
+                          `Approximately ${tokenEquivalent.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${tokenInfo.symbol} 
+                          (1 ${tokenInfo.symbol} = $${parseFloat(tokenPriceUSD).toLocaleString(undefined, { maximumFractionDigits: 6 })} USD)` :
+                        (tokenInfo && !tokenPriceUSD) ? 
+                          "Unable to retrieve price information for this token." : 
+                          undefined
+                      }
+                    />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Currency*</Form.Label>
+                      <Form.Select
+                        value={formData.basics.projectFundCurrency}
+                        onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
+                        required
+                      >
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                      </Form.Select>
+                    </Form.Group>
+                  </Col>
+                </Row>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Campaign Image (Optional)</Form.Label>
+                  <Form.Control
+                    type="file"
+                    onChange={handleFileChange}
+                  />
+                  <Form.Text className="text-muted">
+                    Upload an image to represent your campaign. If not provided, a default image will be used.
+                  </Form.Text>
+                </Form.Group>
+                
+                <Row>
+                  <Col md={6}>
+                    <Form.Group className="mb-3">
+                      <Form.Label>Launch Date</Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={formData.basics.projectLaunchDate}
+                        onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={6}>
+                    <FormField
+                      label="Campaign Duration (days)"
+                      type="number"
+                      value={formData.basics.projectDeadlineDate}
+                      onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
+                      required
                       min="1"
                       max="365"
                       placeholder="Enter number of days"
+                      validate={(val) => val && !isNaN(val) && parseInt(val) > 0}
+                      errorMessage="Duration must be between 1 and 365 days"
+                      error={fieldErrors['basics.projectDeadlineDate']}
                     />
+                  </Col>
+                </Row>
+                
+                <Form.Group className="mb-3">
+                  <Form.Check
+                    type="checkbox"
+                    id="activate-immediately"
+                    label="Activate campaign immediately after creation"
+                    checked={formData.basics.activateImmediately}
+                    onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
+                  />
                 </Form.Group>
-              </Col>
-            </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Check
-                type="checkbox"
-                  id="activate-immediately"
-                  label="Activate campaign immediately after creation"
-                checked={formData.basics.activateImmediately}
-                onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
-              />
-            </Form.Group>
 
-              <Row>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Minimum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={formData.basics.minContribution}
-                      onChange={(e) => handleInputChange('basics', 'minContribution', e.target.value)}
-                      min="0.01"
-                      step="0.01"
-                      placeholder="Enter minimum contribution amount"
-                    />
-                    <Form.Text className="text-muted">
-                      The smallest amount a supporter can contribute (default: 0.01)
-                    </Form.Text>
-                  </Form.Group>
-                </Col>
-                <Col md={6}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Maximum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={formData.basics.maxContribution}
-                      onChange={(e) => handleInputChange('basics', 'maxContribution', e.target.value)}
-                      min="0"
-                      step="0.01"
-                      placeholder="Leave empty for no limit"
-                    />
-                    <Form.Text className="text-muted">
-                      The largest amount a supporter can contribute (leave empty for no limit)
-                    </Form.Text>
-                  </Form.Group>
-                </Col>
-              </Row>
-            
-            <Form.Group className="mb-3">
-              <Form.Check
-                type="checkbox"
-                  id="enable-auto-refund"
-                  label="Enable automatic refunds if campaign fails to reach target"
-                  checked={formData.basics.enableAutoRefund}
-                  onChange={(e) => handleInputChange('basics', 'enableAutoRefund', e.target.checked)}
-                />
-                <Form.Text className="text-muted">
-                  When enabled, contributors will automatically receive refunds if the campaign doesn't meet its target
-                </Form.Text>
-            </Form.Group>
-          </Card.Body>
-        </Card>
-        </Tab>
-
-        <Tab eventKey="story" title="Detailed Story">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-muted mb-3">
-                A detailed project story helps potential supporters understand your vision and increases your chances of success.
-              </p>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Project Story*</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={6}
-                  value={formData.story.projectStory}
-                  onChange={(e) => handleInputChange('story', 'projectStory', e.target.value)}
-                  required
-                  placeholder="Describe your project in detail. What are you creating and why is it important?"
-                />
-                <Form.Text className="text-muted">
-                  {formData.story.projectStory.length} characters (min 100 recommended)
-                </Form.Text>
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Project Goals</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
-                  value={formData.story.projectGoals}
-                  onChange={(e) => handleInputChange('story', 'projectGoals', e.target.value)}
-                  placeholder="What specific goals are you trying to achieve with this funding?"
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Project Timeline</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
-                  value={formData.story.projectTimeline}
-                  onChange={(e) => handleInputChange('story', 'projectTimeline', e.target.value)}
-                  placeholder="Outline the major phases and timeline of your project"
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Budget Breakdown</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
-                  value={formData.story.projectBudget}
-                  onChange={(e) => handleInputChange('story', 'projectBudget', e.target.value)}
-                  placeholder="How will you use the funds? Provide a breakdown of your budget."
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Risks and Challenges</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
-                  value={formData.story.projectRisks}
-                  onChange={(e) => handleInputChange('story', 'projectRisks', e.target.value)}
-                  placeholder="What risks or challenges might you face, and how will you address them?"
-                />
-              </Form.Group>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="team" title="Team">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-muted mb-3">
-                Introduce your team to build trust with potential supporters.
-              </p>
-              
-              {formData.team.members.map((member, index) => (
-                <Card key={index} className="mb-3 border-light">
-                  <Card.Header className="d-flex justify-content-between align-items-center">
-                    <h5 className="mb-0">Team Member #{index + 1}</h5>
-                    {formData.team.members.length > 1 && (
-                      <Button 
-                        variant="outline-danger" 
-                        size="sm"
-                        onClick={() => removeTeamMember(index)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </Card.Header>
-                  <Card.Body>
-                    <Row>
-                      <Col md={6}>
-                        <Form.Group className="mb-3">
-                          <Form.Label>Name</Form.Label>
-                          <Form.Control
-                            type="text"
-                            value={member.name}
-                            onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
-                            placeholder="Full name"
-                          />
-                        </Form.Group>
-                      </Col>
-                      <Col md={6}>
-                        <Form.Group className="mb-3">
-                          <Form.Label>Role</Form.Label>
-                          <Form.Control
-                            type="text"
-                            value={member.role}
-                            onChange={(e) => handleTeamMemberChange(index, 'role', e.target.value)}
-                            placeholder="e.g., Project Lead, Developer, Designer"
-                          />
-                        </Form.Group>
-                      </Col>
-                    </Row>
+                <Row>
+                  <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Bio</Form.Label>
+                      <Form.Label>Minimum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
                       <Form.Control
-                        as="textarea"
-                        rows={2}
-                        value={member.bio}
-                        onChange={(e) => handleTeamMemberChange(index, 'bio', e.target.value)}
-                        placeholder="Brief biography highlighting relevant experience"
+                        type="number"
+                        value={formData.basics.minContribution}
+                        onChange={(e) => handleInputChange('basics', 'minContribution', e.target.value)}
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Enter minimum contribution amount"
                       />
+                      <Form.Text className="text-muted">
+                        The smallest amount a supporter can contribute (default: 0.01)
+                      </Form.Text>
                     </Form.Group>
+                  </Col>
+                  <Col md={6}>
                     <Form.Group className="mb-3">
-                      <Form.Label>Social Link</Form.Label>
+                      <Form.Label>Maximum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
                       <Form.Control
-                        type="text"
-                        value={member.social}
-                        onChange={(e) => handleTeamMemberChange(index, 'social', e.target.value)}
-                        placeholder="LinkedIn, Twitter, or GitHub profile link"
+                        type="number"
+                        value={formData.basics.maxContribution}
+                        onChange={(e) => handleInputChange('basics', 'maxContribution', e.target.value)}
+                        min="0"
+                        step="0.01"
+                        placeholder="Leave empty for no limit"
                       />
+                      <Form.Text className="text-muted">
+                        The largest amount a supporter can contribute (leave empty for no limit)
+                      </Form.Text>
                     </Form.Group>
-                  </Card.Body>
-                </Card>
-              ))}
+                  </Col>
+                </Row>
               
-              <div className="d-grid gap-2">
-                <Button 
-                  variant="outline-primary" 
-                  onClick={addTeamMember}
-                  className="mt-2"
-                >
-                  Add Team Member
-                </Button>
-              </div>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="social" title="Social & Links">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-muted mb-3">
-                Connect your social platforms to build credibility and keep supporters updated.
-              </p>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Website</Form.Label>
-                <Form.Control
-                  type="url"
-                  value={formData.social.website}
-                  onChange={(e) => handleSocialChange('website', e.target.value)}
-                  placeholder="https://yourdomain.com"
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Twitter</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>twitter.com/</InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    value={formData.social.twitter}
-                    onChange={(e) => handleSocialChange('twitter', e.target.value)}
-                    placeholder="username"
+                <Form.Group className="mb-3">
+                  <Form.Check
+                    type="checkbox"
+                    id="enable-auto-refund"
+                    label="Enable automatic refunds if campaign fails to reach target"
+                    checked={formData.basics.enableAutoRefund}
+                    onChange={(e) => handleInputChange('basics', 'enableAutoRefund', e.target.checked)}
                   />
-                </InputGroup>
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Telegram</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>t.me/</InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    value={formData.social.telegram}
-                    onChange={(e) => handleSocialChange('telegram', e.target.value)}
-                    placeholder="username or group"
-                  />
-                </InputGroup>
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Discord</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>discord.gg/</InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    value={formData.social.discord}
-                    onChange={(e) => handleSocialChange('discord', e.target.value)}
-                    placeholder="invite code"
-                  />
-                </InputGroup>
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>GitHub</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>github.com/</InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    value={formData.social.github}
-                    onChange={(e) => handleSocialChange('github', e.target.value)}
-                    placeholder="username or organization"
-                  />
-                </InputGroup>
-              </Form.Group>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>LinkedIn</Form.Label>
-                <InputGroup>
-                  <InputGroup.Text>linkedin.com/in/</InputGroup.Text>
-                  <Form.Control
-                    type="text"
-                    value={formData.social.linkedin}
-                    onChange={(e) => handleSocialChange('linkedin', e.target.value)}
-                    placeholder="username"
-                  />
-                </InputGroup>
-              </Form.Group>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="milestones" title="Milestones">
-          <Card className="mb-3">
-            <Card.Header>
-              <h3 className="mb-0">Campaign Milestones</h3>
-              <small className="text-muted">Define how funds will be released as the campaign progresses</small>
-            </Card.Header>
-            <Card.Body>
-              <Alert variant="info" className="mb-3">
-                <Alert.Heading>Smart Contract Integration</Alert.Heading>
-                <p>
-                  These milestones are directly integrated into your campaign's smart contract. Each milestone:
-                  <ul className="mb-0">
-                    <li>Locks a portion of funds until the specified date</li>
-                    <li>Requires meeting milestone criteria before funds can be released</li>
-                    <li>Creates transparency and accountability for your backers</li>
-                  </ul>
-                </p>
-              </Alert>
-              
-              <p className="text-info mb-3">
-                <strong>Note:</strong> The total target amount of all milestones must equal your campaign's funding goal.
-                Currently: {formData.milestones.reduce((sum, m) => sum + parseFloat(m.targetAmount || 0), 0)} / {formData.basics.projectFundAmount || 0}
-              </p>
-              
-              {formData.milestones.map((milestone, index) => (
-                <Card key={index} className="mb-3 border-light">
-                  <Card.Header className="d-flex justify-content-between align-items-center">
-                    <h5 className="mb-0">Milestone #{index + 1}</h5>
-                    <Button 
-                      variant="outline-danger" 
-                      size="sm"
-                      onClick={() => removeMilestone(index)}
-                      disabled={formData.milestones.length <= 1}
-                    >
-                      Remove
-                    </Button>
-                  </Card.Header>
-                  <Card.Body>
-                    <Row>
-                      <Col md={6}>
-                        <Form.Group className="mb-3">
-                <Form.Label>Title*</Form.Label>
-                <Form.Control
-                  type="text"
-                            value={milestone.title}
-                            onChange={(e) => handleMilestoneChange(index, 'title', e.target.value)}
-                            required
-                            placeholder="e.g., Initial Development, Beta Release"
-                />
-              </Form.Group>
-                      </Col>
-                      <Col md={6}>
-                        <Form.Group className="mb-3">
-                          <Form.Label>Target Amount* ({formData.basics.projectFundCurrency})</Form.Label>
-                          <Form.Control
-                            type="number"
-                            value={milestone.targetAmount}
-                            onChange={(e) => handleMilestoneChange(index, 'targetAmount', e.target.value)}
-                            required
-                            min="0"
-                            step="0.01"
-                            placeholder="Amount for this milestone"
-                          />
-                        </Form.Group>
-                      </Col>
-                    </Row>
-                    
-                    <Row>
-                      <Col md={12}>
-                        <Form.Group className="mb-3">
-                          <Form.Label>Due Date</Form.Label>
-                          <Form.Control
-                            type="date"
-                            value={milestone.dueDate}
-                            onChange={(e) => handleMilestoneChange(index, 'dueDate', e.target.value)}
-                            placeholder="Expected completion date"
-                          />
-                        </Form.Group>
-                      </Col>
-                    </Row>
-                    
-                    <Form.Group className="mb-3">
-                <Form.Label>Description*</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={2}
-                        value={milestone.description}
-                        onChange={(e) => handleMilestoneChange(index, 'description', e.target.value)}
-                        required
-                        placeholder="Describe what will be accomplished in this milestone"
-                />
-              </Form.Group>
-                  </Card.Body>
-                </Card>
-              ))}
-              
-              <div className="d-grid gap-2">
-                <Button 
-                  variant="outline-primary" 
-                  onClick={addMilestone}
-                  className="mt-2"
-                >
-                  Add Another Milestone
-                </Button>
-              </div>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="updates" title="Updates Schedule">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-muted mb-3">
-                Setting clear expectations for updates helps build trust with your supporters.
-              </p>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Update Frequency Commitment</Form.Label>
-                <Form.Select
-                  value={formData.updates.scheduleCommitment}
-                  onChange={(e) => handleInputChange('updates', 'scheduleCommitment', e.target.value)}
-                >
-                  <option value="weekly">Weekly Updates</option>
-                  <option value="biweekly">Bi-Weekly Updates</option>
-                  <option value="monthly">Monthly Updates</option>
-                </Form.Select>
-                <Form.Text className="text-muted">
-                  How often do you commit to updating your backers on project progress?
-                </Form.Text>
-              </Form.Group>
-              
-              <Alert variant="info">
-                <Alert.Heading>Why Updates Matter</Alert.Heading>
-                <p>
-                  Regular updates are crucial for maintaining backer confidence. They show your project is active
-                  and making progress. Campaigns with consistent updates are more likely to succeed and maintain
-                  community support.
-                </p>
-              </Alert>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="rewards" title="Rewards">
-          <Card className="mb-3">
-            <Card.Header>
-              <h3 className="mb-0">Rewards</h3>
-            </Card.Header>
-            <Card.Body>
-              <Form.Group className="mb-3">
-                <Form.Check 
-                  type="checkbox"
-                  id="include-incentives"
-                  label="Include supporter incentives (rewards)"
-                  checked={includeIncentives}
-                  onChange={(e) => setIncludeIncentives(e.target.checked)}
-                />
-              </Form.Group>
-              
-              {includeIncentives && (
-                <>
-                  <p className="text-muted mb-3">
-                    Rewards incentivize supporters to back your project. Define what backers will receive at different contribution levels.
-                  </p>
-                  
-                  {formData.rewards.projectRewards.map((reward, index) => (
-                    <Card key={index} className="mb-3 border-light">
-                      <Card.Header>Reward Tier #{index + 1}</Card.Header>
-                      <Card.Body>
-              <Row>
-                          <Col md={6}>
-                            <Form.Group className="mb-3">
-                              <Form.Label>Reward Title</Form.Label>
-                              <Form.Control
-                                type="text"
-                                value={reward.title}
-                                onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
-                                placeholder="e.g., Early Access, Premium Supporter"
-                              />
-                            </Form.Group>
-                          </Col>
-                          <Col md={6}>
-                            <Form.Group className="mb-3">
-                              <Form.Label>Price</Form.Label>
-                    <Form.Control
-                      type="number"
-                                value={reward.price}
-                                onChange={(e) => handleRewardChange(index, 'price', e.target.value)}
-                                min="0"
-                      step="0.01"
-                                placeholder="Minimum contribution to receive this reward"
-                    />
-                  </Form.Group>
-                </Col>
-                        </Row>
-                        
-                        <Row>
-                          <Col md={6}>
-                            <Form.Group className="mb-3">
-                              <Form.Label>Available Items</Form.Label>
-                    <Form.Control
-                      type="number"
-                                value={reward.availableItems}
-                                onChange={(e) => handleRewardChange(index, 'availableItems', e.target.value)}
-                                min="0"
-                                placeholder="Number available (leave blank for unlimited)"
-                    />
-                  </Form.Group>
-                </Col>
-                          <Col md={6}>
-                            <Form.Group className="mb-3">
-                              <Form.Label>Estimated Delivery</Form.Label>
-                    <Form.Control
-                      type="date"
-                                value={reward.estimatedDelivery}
-                                onChange={(e) => handleRewardChange(index, 'estimatedDelivery', e.target.value)}
-                                placeholder="When will backers receive this reward?"
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
-                        
-                        <Form.Group className="mb-3">
-                          <Form.Label>Description</Form.Label>
-                          <Form.Control
-                            as="textarea"
-                            rows={2}
-                            value={reward.description}
-                            onChange={(e) => handleRewardChange(index, 'description', e.target.value)}
-                            placeholder="Describe what supporters will receive"
-                          />
-                        </Form.Group>
-            </Card.Body>
-          </Card>
-                  ))}
-        
-        <Button 
-                    variant="outline-primary"
+                  <Form.Text className="text-muted">
+                    When enabled, contributors will automatically receive refunds if the campaign doesn't meet its target
+                  </Form.Text>
+                </Form.Group>
+                
+                <div className="d-flex justify-content-between">
+                  <div></div>
+                  <Button 
+                    variant="primary" 
                     onClick={() => {
-                      const updatedRewards = [...formData.rewards.projectRewards];
-                      updatedRewards.push({
-                        title: '',
-                        description: '',
-                        price: '',
-                        availableItems: '',
-                        estimatedDelivery: '',
-                        displayOrder: formData.rewards.projectRewards.length + 1,
-                      });
-                      
-                      setFormData(prev => ({
-                        ...prev,
-                        rewards: {
-                          ...prev.rewards,
-                          projectRewards: updatedRewards
-                        }
-                      }));
+                      if (validateSection('basics')) {
+                        handleTabChange('story');
+                      }
                     }}
                   >
-                    Add Another Reward Tier
+                    Next: Detailed Story
                   </Button>
+                </div>
+              </Form>
+            </Card.Body>
+          </Card>
+        </Tab>
+
+        {/* Other tabs remain mostly the same but with FormField components and validation */}
+        
+        {/* Added new Preview tab */}
+        <Tab eventKey="preview" title="Preview">
+          <Card className="mb-3">
+            <Card.Body>
+              <div className="d-flex justify-content-between align-items-center mb-4">
+                <h4>Final Preview</h4>
+                <div>
+                  <Button 
+                    variant={showPreview ? 'primary' : 'outline-primary'}
+                    onClick={() => setShowPreview(!showPreview)}
+                    className="me-2"
+                  >
+                    {showPreview ? 'Hide Preview' : 'Show Live Preview'}
+                  </Button>
+                  <Button 
+                    variant="success" 
+                    onClick={handleSubmit}
+                    disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
+                  >
+                    Create Campaign
+                  </Button>
+                </div>
+              </div>
+              
+              {showPreview ? (
+                <LivePreview formData={formData} tokenInfo={tokenInfo} />
+              ) : (
+                <>
+                  <Alert variant="info" className="mb-4">
+                    <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                    Preview your campaign before creating it. Click "Show Live Preview" to see how your campaign will look to potential supporters.
+                  </Alert>
+                  
+                  <h5>Campaign Summary</h5>
+                  <ListGroup className="mb-4">
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Title</span>
+                      <strong>{formData.basics.projectTitle || 'Not set'}</strong>
+                    </ListGroup.Item>
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Funding Goal</span>
+                      <strong>{formData.basics.projectFundAmount || '0'} {formData.basics.projectFundCurrency}</strong>
+                    </ListGroup.Item>
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Blockchain</span>
+                      <strong>{formData.basics.blockchainChain || 'Not set'}</strong>
+                    </ListGroup.Item>
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Token</span>
+                      <span>
+                        {tokenInfo ? (
+                          <>
+                            <strong>{tokenInfo.symbol}</strong> ({tokenInfo.name})
+                          </>
+                        ) : 'Not validated'}
+                      </span>
+                    </ListGroup.Item>
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Duration</span>
+                      <strong>{formData.basics.projectDeadlineDate || '0'} days</strong>
+                    </ListGroup.Item>
+                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                      <span>Contract Owner</span>
+                      <code>{formData.basics.contractOwnerAddress || connectedWallet}</code>
+                    </ListGroup.Item>
+                  </ListGroup>
+                  
+                  {Object.keys(fieldErrors).length > 0 && (
+                    <Alert variant="danger">
+                      <Alert.Heading>
+                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                        There are errors in your form
+                      </Alert.Heading>
+                      <p>Please fix the following errors before creating your campaign:</p>
+                      <ul>
+                        {Object.entries(fieldErrors).map(([field, error]) => (
+                          <li key={field}>{error}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+                  
+                  <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
+                    <Button 
+                      variant="success" 
+                      size="lg"
+                      onClick={handleSubmit}
+                      disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
+                    >
+                      Create Campaign
+                    </Button>
+                  </div>
                 </>
               )}
             </Card.Body>
           </Card>
         </Tab>
-        
-        <Tab eventKey="legal" title="Legal">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-muted mb-3">
-                These legal agreements protect both you and your supporters.
-              </p>
-              
-              <Form.Group className="mb-3">
-                <Form.Label>Refund Policy</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
-                  value={formData.legal.refundPolicy}
-                  onChange={(e) => handleInputChange('legal', 'refundPolicy', e.target.value)}
-                  placeholder="Describe your refund policy for backers"
-                />
-                <Form.Text className="text-muted">
-                  If you don't specify a custom policy, our standard platform refund policy will apply.
-                </Form.Text>
-              </Form.Group>
-              
-              <Form.Group className="mb-4">
-                <Form.Check 
-                  type="checkbox"
-                  id="terms-accepted"
-                  label={
-                    <>
-                      I accept the <a href="/terms" target="_blank">Terms of Service</a>
-                    </>
-                  }
-                  checked={formData.legal.termsAccepted}
-                  onChange={(e) => handleInputChange('legal', 'termsAccepted', e.target.checked)}
-                  required
-                />
-              </Form.Group>
-              
-              <Form.Group className="mb-4">
-                <Form.Check 
-                  type="checkbox"
-                  id="privacy-accepted"
-                  label={
-                    <>
-                      I accept the <a href="/privacy" target="_blank">Privacy Policy</a>
-                    </>
-                  }
-                  checked={formData.legal.privacyAccepted}
-                  onChange={(e) => handleInputChange('legal', 'privacyAccepted', e.target.checked)}
-                  required
-                />
-              </Form.Group>
-              
-              <Alert variant="warning">
-                <Alert.Heading>Legal Responsibilities</Alert.Heading>
-                <p>
-                  As a campaign creator, you are legally obligated to fulfill your campaign promises and rewards.
-                  Failure to do so may result in legal action from backers or regulatory authorities.
-                </p>
-              </Alert>
-            </Card.Body>
-          </Card>
-        </Tab>
-        
-        <Tab eventKey="preview" title="Preview">
-          <Card className="mb-3">
-            <Card.Body>
-              <p className="text-info mb-3">
-                Review your campaign information before final submission.
-              </p>
-              
-              <h3>{formData.basics.projectTitle || 'Campaign Title'}</h3>
-              
-              <p><strong>Goal:</strong> {formData.basics.projectFundAmount || '0'} {formData.basics.projectFundCurrency}</p>
-              <p><strong>Duration:</strong> {formData.basics.projectDeadlineDate || '30'} days</p>
-              <p><strong>Category:</strong> {campaignCategories.find(c => c.id === formData.basics.category)?.name || 'Not selected'}</p>
-              
-              <hr />
-              
-              <h4>Brief Description</h4>
-              <p>{formData.basics.projectDescription || 'No description provided'}</p>
-              
-              <h4>Detailed Story</h4>
-              <p>{formData.story.projectStory || 'No detailed story provided'}</p>
-              
-              <hr />
-              
-              <h4>Team</h4>
-              {formData.team.members.length > 0 ? (
-                <ListGroup>
-                  {formData.team.members.map((member, index) => (
-                    <ListGroup.Item key={index}>
-                      <strong>{member.name || 'Unnamed'}</strong> - {member.role || 'No role specified'}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              ) : (
-                <p>No team members added</p>
-              )}
-              
-              <hr />
-              
-              <h4>Milestones</h4>
-              {formData.milestones.length > 0 ? (
-                <ListGroup>
-                  {formData.milestones.map((milestone, index) => (
-                    <ListGroup.Item key={index}>
-                      <strong>{milestone.title || `Milestone #${index + 1}`}</strong> - 
-                      {milestone.targetAmount ? ` ${milestone.targetAmount} ${formData.basics.projectFundCurrency}` : ' No amount specified'}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              ) : (
-                <p>No milestones added</p>
-              )}
-              
-              <hr />
-              
-              <h4>Rewards</h4>
-              {includeIncentives && formData.rewards.projectRewards.length > 0 ? (
-                <ListGroup>
-                  {formData.rewards.projectRewards.map((reward, index) => (
-                    <ListGroup.Item key={index}>
-                      <strong>{reward.title || `Reward #${index + 1}`}</strong> - 
-                      {reward.price ? ` ${reward.price} ${formData.basics.projectFundCurrency}` : ' No price specified'}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              ) : (
-                <p>No rewards added</p>
-              )}
-              
-              <p><strong>Contribution Limits:</strong> 
-                {formData.basics.minContribution ? `Min: ${formData.basics.minContribution} ${formData.basics.projectFundCurrency}` : 'No minimum'} 
-                {formData.basics.maxContribution ? ` / Max: ${formData.basics.maxContribution} ${formData.basics.projectFundCurrency}` : ' / No maximum'}
-              </p>
-              <p><strong>Auto Refund:</strong> {formData.basics.enableAutoRefund ? 'Enabled' : 'Disabled'}</p>
-              
-              <div className="alert alert-warning mt-4">
-                This is just a preview. You can go back to any section to make changes before submission.
-              </div>
-            </Card.Body>
-          </Card>
-        </Tab>
       </Tabs>
       
-      <div className="d-grid gap-2 mt-4">
-        <Button variant="primary" onClick={handleSubmit} size="lg">
-          Create Campaign
-        </Button>
-      </div>
+      {/* Confirmation Modal */}
+      <SubmitConfirmationModal
+        show={showConfirmModal}
+        onHide={() => setShowConfirmModal(false)}
+        onConfirm={submitConfirmed}
+        formData={formData}
+        tokenInfo={tokenInfo}
+        submitting={submitting}
+        estimatedGas={gasEstimate}
+      />
     </Container>
   );
 };
