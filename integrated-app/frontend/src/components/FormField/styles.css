@@ -1,0 +1,76 @@
+.form-control:focus {
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+.form-control.is-valid:focus {
+  box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.15);
+}
+
+.form-control.is-invalid:focus {
+  box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.15);
+}
+
+/* Animated validation icon */
+.form-control.is-valid + .form-check-label::before,
+.was-validated .form-control:valid + .form-check-label::before {
+  animation: validPulse 0.5s;
+}
+
+.form-control.is-invalid + .form-check-label::before,
+.was-validated .form-control:invalid + .form-check-label::before {
+  animation: invalidPulse 0.5s;
+}
+
+@keyframes validPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes invalidPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.form-field {
+  margin-bottom: 1.25rem;
+}
+
+.form-field .form-label {
+  font-weight: 500;
+  margin-bottom: 0.4rem;
+  color: #495057;
+}
+
+.required-field .form-label:after {
+  content: '*';
+  color: #dc3545;
+  margin-left: 0.25rem;
+}
+
+.form-field .form-control:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+.char-counter {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.invalid-feedback {
+  font-size: 80%;
+}
+
+/* Animation for validation */
+.form-control.is-invalid {
+  animation: shakeError 0.5s;
+}
+
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+} 

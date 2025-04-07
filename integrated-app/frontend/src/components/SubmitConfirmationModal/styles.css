@@ -1,0 +1,155 @@
+.submit-confirmation-modal .modal-content {
+  border-radius: 10px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.submit-confirmation-modal .modal-title {
+  font-weight: 600;
+  color: #0d6efd;
+}
+
+.gas-fee-container {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.gas-option {
+  text-align: center;
+  padding: 12px 8px;
+  border-radius: 6px;
+  background-color: #fff;
+  border: 1px solid #dee2e6;
+  height: 100%;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.gas-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+.gas-option.recommended {
+  border-color: #ffc107;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.2);
+}
+
+.gas-price {
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-top: 5px;
+}
+
+.gas-usd {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.recommended-badge {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #ffc107;
+  color: #000;
+  font-weight: 600;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.checklist-group .list-group-item {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.checklist-group .list-group-item:hover {
+  background-color: #f8f9fa;
+}
+
+.checklist-group .list-group-item.checked {
+  border-left-color: #198754;
+  background-color: rgba(25, 135, 84, 0.05);
+}
+
+.contract-owner-code {
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  word-break: break-all;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmation-modal .modal-content {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.campaign-details-summary h5 {
+  margin-bottom: 1rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.gas-estimate-container {
+  background-color: #fff8e6;
+  border-color: #ffc107 !important;
+}
+
+.confirmation-checklist {
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.confirmation-item {
+  border-left: none;
+  border-right: none;
+  padding: 0.75rem 1rem;
+}
+
+.confirmation-item:first-child {
+  border-top: none;
+}
+
+.confirmation-item:last-child {
+  border-bottom: none;
+}
+
+.final-confirmation {
+  background-color: #e6f7ff;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+}
+
+.list-group-item {
+  border-left: 0;
+  border-right: 0;
+}
+
+.list-group-item:first-child {
+  border-top: 0;
+}
+
+.list-group-item:last-child {
+  border-bottom: 0;
+}
+
+/* Animation for the checkbox */
+.form-check-input:checked {
+  animation: pulse 0.3s;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+} 

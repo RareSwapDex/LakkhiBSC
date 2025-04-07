@@ -77,7 +77,7 @@ const CreateCampaignPage = () => {
   const [error, setError] = useState(null);
   const [savedState, setSavedState] = useState(lastSaved ? `Last saved: ${new Date(lastSaved).toLocaleString()}` : null);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
-  const [showTemplateSelector, setShowTemplateSelector] = useState(!formData.basics.projectTitle);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [tokenInfo, setTokenInfo] = useState(null);
   
   // Handle template selection
@@ -1567,23 +1567,6 @@ const CreateCampaignPage = () => {
   };
   
   // Manual save function with notification
-  const handleManualSave = () => {
-    persistForm();
-    setSavedState('Saved');
-    
-    // Clear the saved notification after 3 seconds
-    setTimeout(() => {
-      setSavedState(null);
-    }, 3000);
-  };
-  
-  // Reset form to default state
-  const handleResetForm = () => {
-    if (window.confirm('Are you sure you want to reset the form? All unsaved data will be lost.')) {
-      clearPersistedForm();
-      window.location.reload(); // Reload the page to reset all state
-    }
-  };
   
   // Enhanced function to handle tab change with validation
   const handleTabChange = (key) => {
@@ -1744,6 +1727,15 @@ const CreateCampaignPage = () => {
         )}
         
         <div className="d-flex justify-content-end">
+          <Button 
+            variant="outline-success" 
+            size="sm" 
+            className="me-2"
+            onClick={() => setShowTemplateSelector(true)}
+            title="Choose a template"
+          >
+            <FontAwesomeIcon icon={faInfoCircle} className="me-1" /> Use Template
+          </Button>
           <Button 
             variant="outline-primary" 
             size="sm" 
@@ -2002,13 +1994,37 @@ const CreateCampaignPage = () => {
                 </Row>
                 
                 <Form.Group className="mb-3">
-                  <Form.Label>Campaign Image (Optional)</Form.Label>
-                  <Form.Control
-                    type="file"
-                    onChange={handleFileChange}
+                  <Form.Label>Campaign Image</Form.Label>
+                  <ImageUploader
+                    value={formData.basics.projectImageUrl}
+                    onChange={(imageData) => {
+                      if (imageData) {
+                        handleInputChange('basics', 'projectImageUrl', imageData.preview);
+                        // If we have a file object, use that for upload
+                        if (imageData.file) {
+                          setFormData(prev => ({
+                            ...prev,
+                            basics: {
+                              ...prev.basics,
+                              projectImageFile: imageData.file
+                            }
+                          }));
+                        }
+                      } else {
+                        handleInputChange('basics', 'projectImageUrl', '');
+                        // Clear the file object too
+                        setFormData(prev => ({
+                          ...prev,
+                          basics: {
+                            ...prev.basics,
+                            projectImageFile: null
+                          }
+                        }));
+                      }
+                    }}
                   />
                   <Form.Text className="text-muted">
-                    Upload an image to represent your campaign. If not provided, a default image will be used.
+                    Upload an image to represent your campaign. Support for drag & drop, URL import, and more.
                   </Form.Text>
                 </Form.Group>
                 
@@ -2112,6 +2128,95 @@ const CreateCampaignPage = () => {
                   </Button>
                 </div>
               </Form>
+            </Card.Body>
+          </Card>
+        </Tab>
+
+        {/* Enhanced Story tab with RichTextEditor */}
+        <Tab eventKey="story" title="Story">
+          <Card className="mb-3">
+            <Card.Body>
+              <Form>
+                <FormField
+                  label="Project Story"
+                  as={RichTextEditor}
+                  value={formData.story.projectStory}
+                  onChange={(content) => handleInputChange('story', 'projectStory', content)}
+                  required
+                  placeholder="Describe your project in detail. What is it, why is it important, and how will the funds be used?"
+                  validate={(val) => val && val.trim().length >= 100}
+                  errorMessage="Story must be at least 100 characters"
+                  error={fieldErrors['story.projectStory']}
+                  height="300px"
+                />
+                
+                <FormField
+                  label="Project Goals"
+                  as={RichTextEditor}
+                  value={formData.story.projectGoals}
+                  onChange={(content) => handleInputChange('story', 'projectGoals', content)}
+                  placeholder="What specific goals are you trying to achieve? List key milestones and deliverables."
+                  height="200px"
+                />
+                
+                <FormField
+                  label="Team Information"
+                  as={RichTextEditor}
+                  value={formData.story.projectTeam}
+                  onChange={(content) => handleInputChange('story', 'projectTeam', content)}
+                  placeholder="Tell us about your team. Who is involved and what experience do they bring?"
+                  height="200px"
+                />
+                
+                <FormField
+                  label="Risks & Challenges"
+                  as={RichTextEditor}
+                  value={formData.story.projectRisks}
+                  onChange={(content) => handleInputChange('story', 'projectRisks', content)}
+                  placeholder="What risks and challenges might you encounter? How do you plan to overcome them?"
+                  height="200px"
+                />
+                
+                <div className="d-flex justify-content-between">
+                  <Button variant="outline-secondary" onClick={() => handleTabChange('basics')}>
+                    Back to Basics
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    onClick={() => {
+                      if (validateSection('story')) {
+                        handleTabChange('preview');
+                      }
+                    }}
+                  >
+                    Next: Preview
+                  </Button>
+                </div>
+              </Form>
+            </Card.Body>
+          </Card>
+        </Tab>
+        
+        {/* SEO Optimizer */}
+        <Tab eventKey="seo" title="SEO & Visibility">
+          <Card className="mb-3">
+            <Card.Body>
+              <SeoOptimizer 
+                formData={formData}
+                onChange={(seoData) => handleInputChange('seo', null, seoData)}
+              />
+              
+              <div className="d-flex justify-content-between mt-4">
+                <Button variant="outline-secondary" onClick={() => handleTabChange('story')}>
+                  Back to Story
+                </Button>
+                <Button 
+                  variant="primary" 
+                  onClick={() => handleTabChange('preview')}
+                >
+                  Next: Preview
+                </Button>
+              </div>
             </Card.Body>
           </Card>
         </Tab>
@@ -2226,6 +2331,13 @@ const CreateCampaignPage = () => {
         tokenInfo={tokenInfo}
         submitting={submitting}
         estimatedGas={gasEstimate}
+      />
+      
+      {/* Campaign Template Selector Modal */}
+      <CampaignTemplateSelector
+        show={showTemplateSelector}
+        onHide={() => setShowTemplateSelector(false)}
+        onSelect={handleTemplateSelect}
       />
     </Container>
   );

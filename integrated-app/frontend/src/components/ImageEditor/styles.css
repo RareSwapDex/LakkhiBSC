@@ -1,0 +1,68 @@
+.image-editor-modal .modal-content {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.image-editor-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-container {
+  width: 100%;
+  background-color: #222;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.editor-canvas {
+  max-width: 100%;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  display: block;
+  cursor: crosshair;
+}
+
+.editing-tools {
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+}
+
+.tool-section {
+  margin-bottom: 1.5rem;
+}
+
+.tool-section h5 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: #495057;
+}
+
+.flip-h {
+  transform: rotate(90deg);
+}
+
+.flip-v {
+  transform: rotate(180deg);
+}
+
+/* Responsive layout for larger screens */
+@media (min-width: 992px) {
+  .image-editor-container {
+    flex-direction: row;
+    gap: 1.5rem;
+  }
+  
+  .canvas-container {
+    flex: 3;
+    margin-bottom: 0;
+  }
+  
+  .editing-tools {
+    flex: 1;
+  }
+} 

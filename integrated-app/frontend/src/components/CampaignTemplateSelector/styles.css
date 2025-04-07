@@ -1,0 +1,119 @@
+.template-selector-modal .modal-content {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.template-selector-modal .modal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.templates-grid {
+  margin-bottom: 1rem;
+}
+
+.template-card {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 100%;
+  border: 1px solid #dee2e6;
+}
+
+.template-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  border-color: #ccc;
+}
+
+.template-card.selected {
+  border: 2px solid #007bff;
+  background-color: rgba(0, 123, 255, 0.05);
+}
+
+.template-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: rgba(0, 123, 255, 0.1);
+  color: #007bff;
+  margin: 0 auto 15px;
+}
+
+.template-card .card-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.3rem;
+  text-align: center;
+}
+
+.template-card .card-subtitle {
+  font-size: 0.875rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.template-card .card-text {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.template-card .badge {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+}
+
+.milestones-preview {
+  background-color: #f8f9fa;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.milestone-item {
+  padding: 0.25rem 0;
+  border-bottom: 1px dashed #dee2e6;
+}
+
+.milestone-item:last-child {
+  border-bottom: none;
+}
+
+.template-card .card-footer {
+  background-color: transparent;
+  border-top: 1px solid #dee2e6;
+  padding: 0.75rem;
+  margin-top: auto;
+}
+
+.custom-template-card {
+  border: 2px dashed #dee2e6;
+  background-color: #f8f9fa;
+}
+
+.custom-template-card:hover {
+  background-color: #e9ecef;
+}
+
+/* Make the templates display better on mobile */
+@media (max-width: 576px) {
+  .template-icon-container {
+    height: 80px;
+  }
+  
+  .template-card .card-title {
+    font-size: 1.1rem;
+  }
+  
+  .template-selector-modal .modal-body {
+    padding: 1rem;
+  }
+}
+
+.template-selector-modal .modal-dialog {
+  max-width: 800px;
+} 
