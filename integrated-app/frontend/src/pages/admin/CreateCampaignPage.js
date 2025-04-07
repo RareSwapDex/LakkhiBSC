@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ProviderContext } from '../../web3/ProviderContext';
 import TokenSelector from '../../components/TokenSelector';
+import ImageUploader from '../../components/ImageUploader';
 import projectService from '../../services/projectService';
 import Web3 from 'web3';
 
@@ -429,15 +430,28 @@ const CreateCampaignPage = () => {
     }));
   };
   
-  // Handle file upload
-  const handleFileChange = (e) => {
-    setFormData(prev => ({
-      ...prev,
-      basics: {
-        ...prev.basics,
-        projectImageFile: e.target.files[0]
-      }
-    }));
+  // Handle image upload
+  const handleImageChange = (images) => {
+    // Update form data with the primary image (first one)
+    if (images && images.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        basics: {
+          ...prev.basics,
+          projectImageFile: images[0].file,
+          projectGalleryImages: images
+        }
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        basics: {
+          ...prev.basics,
+          projectImageFile: null,
+          projectGalleryImages: []
+        }
+      }));
+    }
   };
   
   // Handle reward form changes
@@ -1693,13 +1707,15 @@ const CreateCampaignPage = () => {
             </Row>
             
             <Form.Group className="mb-3">
-              <Form.Label>Campaign Image (Optional)</Form.Label>
-              <Form.Control
-                type="file"
-                onChange={handleFileChange}
+              <Form.Label>Campaign Images</Form.Label>
+              <ImageUploader 
+                onChange={handleImageChange}
+                maxFiles={8}
+                maxFileSize={5}
+                acceptedFormats={['image/jpeg', 'image/png', 'image/gif', 'image/webp']}
               />
               <Form.Text className="text-muted">
-                Upload an image to represent your campaign. If not provided, a default image will be used.
+                Upload your main campaign image and additional gallery images. First image will be used as the campaign thumbnail.
               </Form.Text>
             </Form.Group>
             
