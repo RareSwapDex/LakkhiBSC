@@ -1,7 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Button, Spinner, Alert } from 'react-bootstrap';
+import { Form, Button, InputGroup, Badge, Card, Spinner, Alert, Row, Col } from 'react-bootstrap';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCheck, faTimes, faSearch, faExchangeAlt, faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios';
-import Web3 from 'web3';
+import './styles.css';
+
+// Popular tokens by chain
+const POPULAR_TOKENS = {
+  'BSC': [
+    { address: '0x55d398326f99059fF775485246999027B3197955', name: 'USDT', logo: 'https://cryptologos.cc/logos/tether-usdt-logo.png' },
+    { address: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', name: 'BUSD', logo: 'https://cryptologos.cc/logos/binance-usd-busd-logo.png' },
+    { address: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', name: 'WBNB', logo: 'https://cryptologos.cc/logos/binance-coin-bnb-logo.png' },
+  ],
+  'Ethereum': [
+    { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', name: 'USDT', logo: 'https://cryptologos.cc/logos/tether-usdt-logo.png' },
+    { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', name: 'USDC', logo: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png' },
+    { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', name: 'WETH', logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.png' },
+  ],
+  'Polygon': [
+    { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', name: 'USDT', logo: 'https://cryptologos.cc/logos/tether-usdt-logo.png' },
+    { address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', name: 'USDC', logo: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png' },
+    { address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', name: 'WMATIC', logo: 'https://cryptologos.cc/logos/polygon-matic-logo.png' },
+  ]
+};
 
 /**
  * TokenSelector component for selecting tokens from a list of popular options or entering a custom address
@@ -14,293 +35,112 @@ import Web3 from 'web3';
  */
 const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
   const [tokenAddress, setTokenAddress] = useState(value || '');
+  const [validating, setValidating] = useState(false);
   const [tokenInfo, setTokenInfo] = useState(null);
-  const [isValidating, setIsValidating] = useState(false);
-  const [error, setError] = useState(null);
-  const [validated, setValidated] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedChain, setSelectedChain] = useState('BSC');
+  const [showPopularTokens, setShowPopularTokens] = useState(false);
+  const [marketData, setMarketData] = useState(null);
   
+  // When external value changes, update internal state
   useEffect(() => {
-    // When value changes from parent component
-    setTokenAddress(value || '');
+    if (value !== tokenAddress) {
+      setTokenAddress(value || '');
+    }
   }, [value]);
   
-  useEffect(() => {
-    // If token info changes, call the onValidate callback
-    if (tokenInfo && onValidate) {
-      onValidate(tokenInfo);
-      setValidated(true);
-    }
-  }, [tokenInfo, onValidate]);
-  
-  const handleChange = (e) => {
-    const newValue = e.target.value;
-    setTokenAddress(newValue);
-    setValidated(false);
-    setError(null);
-    
-    if (onReset) {
-      onReset();
-    }
-    
-    if (onChange) {
-      onChange(newValue);
-    }
-  };
-  
   const validateToken = async () => {
-    if (!tokenAddress) {
+    if (!tokenAddress.trim()) {
       setError('Please enter a token address');
       return;
     }
     
-    setIsValidating(true);
-    setError(null);
-    setTokenInfo(null);
+    setValidating(true);
+    setError('');
     
     try {
-      // Frontend validation for proper address format
-      if (!tokenAddress.startsWith('0x') && tokenAddress.length !== 42) {
-        throw new Error('Invalid token address format. Must be a valid address starting with 0x.');
-      }
-
-      // Define free and reliable RPC endpoints for different blockchains
-      const blockchainRpcs = {
-        BSC: [
-          'https://bsc-dataseed1.binance.org/',
-          'https://bsc-dataseed2.binance.org/',
-          'https://bsc-dataseed3.binance.org/',
-          'https://bsc-dataseed4.binance.org/',
-          'https://binance.llamarpc.com'
-        ],
-        Ethereum: [
-          'https://eth.llamarpc.com',
-          'https://ethereum.publicnode.com',
-          'https://rpc.ankr.com/eth',
-          'https://eth.meowrpc.com'
-        ],
-        Base: [
-          'https://mainnet.base.org',
-          'https://base.llamarpc.com',
-          'https://base.publicnode.com'
-        ]
-      };
-      
-      // Try the blockchains in preferred order
-      const chainOrder = ['BSC', 'Ethereum', 'Base'];
-      let detectedChain = null;
-      let web3 = null;
-      let checksumAddress = null;
-      let tokenContractCode = null;
-      
-      // First try using the connected wallet's provider if available
-      if (window.ethereum) {
-        try {
-          console.log('Trying to use wallet provider for token detection');
-          web3 = new Web3(window.ethereum);
-          await web3.eth.net.isListening();
-          
-          try {
-            // Try to get the address and code using wallet provider
-            checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
-            tokenContractCode = await web3.eth.getCode(checksumAddress);
-            
-            if (tokenContractCode && tokenContractCode !== '0x' && tokenContractCode !== '0x0') {
-              // Determine which network the wallet is connected to
-              const chainId = await web3.eth.getChainId();
-              
-              // Map chainId to our chains
-              if (chainId === 56) {
-                detectedChain = 'BSC';
-              } else if (chainId === 1) {
-                detectedChain = 'Ethereum';
-              } else if (chainId === 8453) {
-                detectedChain = 'Base';
-              } else {
-                // Default to BSC if we can't determine
-                detectedChain = 'BSC';
-              }
-              
-              console.log(`Using wallet connection - detected chain: ${detectedChain}`);
-            }
-          } catch (addressError) {
-            console.warn('Failed to check address with wallet provider:', addressError);
-          }
-        } catch (walletError) {
-          console.warn('Wallet connection failed, will try RPC endpoints:', walletError);
-          web3 = null;
+      const response = await axios.post(
+        `${process.env.REACT_APP_BASE_URL}/api/token/validate/`,
+        { 
+          token_address: tokenAddress,
+          blockchain: selectedChain
         }
-      }
+      );
       
-      // If wallet check didn't give us a result, try each chain's RPC endpoints
-      if (!detectedChain) {
-        console.log('Trying RPC endpoints for token detection');
+      if (response.data.success) {
+        const tokenData = response.data.token_info;
+        setTokenInfo(tokenData);
         
-        // First, try checking if this might be an Ethereum address
-        if (tokenAddress.startsWith('0x')) {
-          // Try loading infura.io data directly
-          try {
-            console.log('Trying to get token data from Etherscan API');
-            const etherscanResponse = await fetch(`https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${tokenAddress}&apikey=YourAPI`);
-            const etherscanData = await etherscanResponse.json();
-            
-            if (etherscanData.status === '1' && etherscanData.result && etherscanData.result[0].ContractName) {
-              console.log('Found contract on Ethereum via Etherscan:', etherscanData.result[0].ContractName);
-              detectedChain = 'Ethereum';
-            }
-          } catch (etherscanError) {
-            console.warn('Etherscan API check failed:', etherscanError);
-          }
+        // If API provided a blockchain, update the selected chain
+        if (tokenData.blockchain) {
+          setSelectedChain(tokenData.blockchain);
         }
         
-        // If we still don't know, check each chain
-        if (!detectedChain) {
-          for (const chain of chainOrder) {
-            const rpcUrls = blockchainRpcs[chain];
-            
-            for (const rpcUrl of rpcUrls) {
-              try {
-                console.log(`Trying ${chain} via ${rpcUrl}`);
-                const tempWeb3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
-                
-                try {
-                  await tempWeb3.eth.net.isListening();
-                } catch (netError) {
-                  console.warn(`RPC ${rpcUrl} not responding:`, netError);
-                  continue; // Try next RPC
-                }
-                
-                try {
-                  const tempChecksumAddress = tempWeb3.utils.toChecksumAddress(tokenAddress);
-                  const code = await tempWeb3.eth.getCode(tempChecksumAddress);
-                  
-                  if (code && code !== '0x' && code !== '0x0') {
-                    web3 = tempWeb3;
-                    checksumAddress = tempChecksumAddress;
-                    tokenContractCode = code;
-                    detectedChain = chain;
-                    console.log(`Contract found on ${chain} using ${rpcUrl}`);
-                    break;
-                  }
-                } catch (addressError) {
-                  console.warn(`Failed to validate address on ${chain}:`, addressError);
-                }
-              } catch (error) {
-                console.warn(`Failed to check token on ${chain} using ${rpcUrl}:`, error);
-              }
-            }
-            
-            if (detectedChain) break;
-          }
-        }
-      }
-      
-      // If we still couldn't detect the chain, try to guess from the address format
-      if (!detectedChain) {
-        console.log('Could not detect chain from RPCs, trying to infer from address');
+        // Fetch additional market data if available
+        fetchMarketData(tokenData.symbol);
         
-        if (tokenAddress.startsWith('0x')) {
-          // Try to fetch token from the API directly
-          try {
-            const apiUrl = `${process.env.REACT_APP_BASE_URL}/api/token/validate/`;
-            const response = await axios.post(apiUrl, { token_address: tokenAddress });
-            
-            if (response.data && response.data.success) {
-              console.log('Token validated via API:', response.data);
-              setTokenInfo({
-                name: response.data.token_info.name,
-                symbol: response.data.token_info.symbol,
-                decimals: response.data.token_info.decimals,
-                address: tokenAddress,
-                blockchain: response.data.token_info.blockchain || 'BSC'
-              });
-              return;
-            }
-          } catch (apiError) {
-            console.warn('API validation failed:', apiError);
-          }
-          
-          // Default to Ethereum for 0x addresses if nothing else worked
-          detectedChain = 'Ethereum';
-        } else {
-          // Non-0x addresses might be Solana or other chains (not handled in this component)
-          throw new Error('Unsupported token format. Currently only Ethereum, BSC, and Base tokens are supported.');
+        // Call the onValidate callback if provided
+        if (onValidate) {
+          onValidate(tokenData);
         }
-      }
-      
-      if (!web3) {
-        // Create a final web3 instance for the detected chain
-        const rpcUrl = blockchainRpcs[detectedChain][0];
-        web3 = new Web3(new Web3.providers.HttpProvider(rpcUrl));
-        
-        // Ensure we have a checksumAddress
-        if (!checksumAddress) {
-          checksumAddress = web3.utils.toChecksumAddress(tokenAddress);
-        }
-      }
-      
-      // Standard ERC20 ABI
-      const tokenABI = [
-        { "constant": true, "inputs": [], "name": "name", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-        { "constant": true, "inputs": [], "name": "symbol", "outputs": [{ "name": "", "type": "string" }], "type": "function" },
-        { "constant": true, "inputs": [], "name": "decimals", "outputs": [{ "name": "", "type": "uint8" }], "type": "function" }
-      ];
-      
-      const tokenContract = new web3.eth.Contract(tokenABI, checksumAddress);
-      
-      // Try to get token data
-      let name, symbol, decimals;
-      
-      try {
-        name = await tokenContract.methods.name().call();
-      } catch (e) {
-        console.error('Error getting token name:', e);
-        name = null;
-      }
-      
-      try {
-        symbol = await tokenContract.methods.symbol().call();
-      } catch (e) {
-        console.error('Error getting token symbol:', e);
-        symbol = null;
-      }
-      
-      try {
-        decimals = await tokenContract.methods.decimals().call();
-      } catch (e) {
-        console.error('Error getting token decimals:', e);
-        decimals = '18'; // Default to 18 decimals
-      }
-      
-      if (name && symbol) {
-        // Include the detected blockchain in the token info
-        setTokenInfo({
-          name: name,
-          symbol: symbol,
-          decimals: parseInt(decimals || '18', 10),
-          address: checksumAddress,
-          blockchain: detectedChain  // Add the blockchain info
-        });
       } else {
-        throw new Error('Could not retrieve token information. This may not be a standard token.');
+        setError(response.data.message || 'Invalid token address');
+        setTokenInfo(null);
       }
-    } catch (error) {
-      console.error('Token validation failed:', error);
-      setError(error.message || 'Failed to validate token');
+    } catch (err) {
+      console.error('Error validating token:', err);
+      setError(err.response?.data?.message || 'Failed to validate token');
       setTokenInfo(null);
     } finally {
-      setIsValidating(false);
+      setValidating(false);
     }
   };
   
-  const resetToken = () => {
+  const fetchMarketData = async (symbol) => {
+    if (!symbol) return;
+    
+    try {
+      const response = await axios.get(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${symbol.toLowerCase()}&order=market_cap_desc&per_page=1&page=1&sparkline=false`
+      );
+      
+      if (response.data && response.data.length > 0) {
+        setMarketData(response.data[0]);
+      }
+    } catch (err) {
+      console.error('Error fetching market data:', err);
+      setMarketData(null);
+    }
+  };
+  
+  const handleInputChange = (e) => {
+    const newValue = e.target.value;
+    setTokenAddress(newValue);
+    onChange(newValue);
+    
+    // Clear token info when input changes
+    if (tokenInfo) {
+      setTokenInfo(null);
+      setMarketData(null);
+    }
+  };
+  
+  const handleSelectPopularToken = (token) => {
+    setTokenAddress(token.address);
+    onChange(token.address);
+    setShowPopularTokens(false);
+    
+    // Automatically validate after selecting
+    setTimeout(validateToken, 100);
+  };
+  
+  const handleReset = () => {
     setTokenAddress('');
     setTokenInfo(null);
-    setValidated(false);
-    setError(null);
+    setMarketData(null);
+    setError('');
     
-    if (onChange) {
-      onChange('');
-    }
+    onChange('');
     
     if (onReset) {
       onReset();
@@ -308,59 +148,167 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
   };
   
   return (
-    <Form.Group className="mb-3">
-      <Form.Label>Token Address (Required) <span className="text-danger">*</span></Form.Label>
-      <div className="d-flex mb-2">
-        <Form.Control
-          type="text"
-          placeholder="0x..."
-          value={tokenAddress}
-          onChange={handleChange}
-          className={validated ? 'border-success' : ''}
-          required
-        />
-        <Button 
-          variant="outline-primary" 
-          onClick={validateToken} 
-          disabled={isValidating || !tokenAddress}
-          className="ms-2"
-        >
-          {isValidating ? <Spinner size="sm" animation="border" /> : 'Validate'}
-        </Button>
+    <div className="token-selector mb-4">
+      <Form.Group className="mb-3">
+        <Form.Label>Token Address*</Form.Label>
         
-        {tokenAddress && (
+        <InputGroup>
+          <Form.Control
+            type="text"
+            value={tokenAddress}
+            onChange={handleInputChange}
+            placeholder="Enter the token contract address (0x...)"
+            className={error ? 'is-invalid' : tokenInfo ? 'is-valid' : ''}
+          />
+          
           <Button 
-            variant="outline-danger" 
-            onClick={resetToken} 
-            className="ms-2"
+            variant="outline-secondary" 
+            onClick={() => setShowPopularTokens(!showPopularTokens)}
+            title="Show popular tokens"
           >
-            Clear
+            <FontAwesomeIcon icon={faSearch} />
           </Button>
+          
+          <Button 
+            variant="primary" 
+            onClick={validateToken}
+            disabled={validating || !tokenAddress.trim()}
+          >
+            {validating ? (
+              <Spinner animation="border" size="sm" />
+            ) : tokenInfo ? (
+              <FontAwesomeIcon icon={faCheck} />
+            ) : (
+              'Validate'
+            )}
+          </Button>
+        </InputGroup>
+        
+        {error && (
+          <Form.Control.Feedback type="invalid" className="d-block">
+            {error}
+          </Form.Control.Feedback>
         )}
-      </div>
+        
+        <Form.Text className="text-muted">
+          Enter the token contract address you want to use for fundraising.
+        </Form.Text>
+      </Form.Group>
       
-      <Form.Text className="text-muted">
-        Enter the token address for this campaign. This is required to specify how funds will be raised.
-      </Form.Text>
-      
-      {error && (
-        <Alert variant="danger" className="mt-2 mb-0 py-2">
-          {error}
-        </Alert>
+      {showPopularTokens && (
+        <Card className="mb-3 token-selector-popular">
+          <Card.Header className="d-flex justify-content-between align-items-center">
+            <div>
+              Popular Tokens
+              <Badge bg="primary" className="ms-2">{selectedChain}</Badge>
+            </div>
+            <div>
+              {Object.keys(POPULAR_TOKENS).map(chain => (
+                <Badge 
+                  key={chain}
+                  bg={chain === selectedChain ? 'primary' : 'secondary'}
+                  className="me-1 chain-badge"
+                  onClick={() => setSelectedChain(chain)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {chain}
+                </Badge>
+              ))}
+            </div>
+          </Card.Header>
+          <Card.Body>
+            <Row>
+              {POPULAR_TOKENS[selectedChain].map(token => (
+                <Col key={token.address} xs={12} sm={6} md={4}>
+                  <div 
+                    className="popular-token-item"
+                    onClick={() => handleSelectPopularToken(token)}
+                  >
+                    <img 
+                      src={token.logo} 
+                      alt={token.name} 
+                      className="token-logo"
+                    />
+                    <div className="token-info">
+                      <div className="token-name">{token.name}</div>
+                      <div className="token-address text-muted">
+                        {token.address.substring(0, 6)}...{token.address.substring(token.address.length - 4)}
+                      </div>
+                    </div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          </Card.Body>
+        </Card>
       )}
       
       {tokenInfo && (
-        <Alert variant="success" className="mt-2 mb-0">
-          <Alert.Heading className="h6">Token validated successfully</Alert.Heading>
-          <p className="mb-0">
-            <strong>Name:</strong> {tokenInfo.name}<br />
-            <strong>Symbol:</strong> {tokenInfo.symbol}<br />
-            <strong>Decimals:</strong> {tokenInfo.decimals}<br />
-            <strong>Blockchain:</strong> {tokenInfo.blockchain || 'BSC'}
-          </p>
-        </Alert>
+        <Card className="mb-3 token-info-card">
+          <Card.Header className="d-flex justify-content-between align-items-center">
+            <div className="d-flex align-items-center">
+              <div className="token-validation-success">
+                <FontAwesomeIcon icon={faCheck} className="me-2" />
+                Token Validated
+              </div>
+              <Badge bg="primary" className="ms-2">{tokenInfo.blockchain || selectedChain}</Badge>
+            </div>
+            <Button 
+              variant="outline-secondary" 
+              size="sm"
+              onClick={handleReset}
+            >
+              <FontAwesomeIcon icon={faExchangeAlt} className="me-1" />
+              Change
+            </Button>
+          </Card.Header>
+          <Card.Body>
+            <Row>
+              <Col xs={12} md={6}>
+                <h5>{tokenInfo.name} ({tokenInfo.symbol})</h5>
+                <p className="mb-1">
+                  <strong>Decimals:</strong> {tokenInfo.decimals}
+                </p>
+                <p className="mb-1">
+                  <strong>Address:</strong> <code className="token-address-code">{tokenInfo.address}</code>
+                </p>
+                {tokenInfo.total_supply && (
+                  <p className="mb-1">
+                    <strong>Total Supply:</strong> {parseFloat(tokenInfo.total_supply).toLocaleString()}
+                  </p>
+                )}
+              </Col>
+              
+              {marketData && (
+                <Col xs={12} md={6}>
+                  <div className="market-data">
+                    <h6>Market Data <FontAwesomeIcon icon={faInfoCircle} /></h6>
+                    <p className="mb-1">
+                      <strong>Price:</strong> ${marketData.current_price?.toLocaleString() || 'N/A'}
+                    </p>
+                    <p className="mb-1">
+                      <strong>Market Cap:</strong> ${marketData.market_cap?.toLocaleString() || 'N/A'}
+                    </p>
+                    <p className="mb-1">
+                      <strong>24h Change:</strong> <span className={marketData.price_change_percentage_24h >= 0 ? 'text-success' : 'text-danger'}>
+                        {marketData.price_change_percentage_24h?.toFixed(2) || 0}%
+                      </span>
+                    </p>
+                  </div>
+                </Col>
+              )}
+            </Row>
+            
+            {tokenInfo.warnings && tokenInfo.warnings.length > 0 && (
+              <Alert variant="warning" className="mt-3 mb-0">
+                <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+                <strong>Note:</strong> {tokenInfo.warnings[0]}
+              </Alert>
+            )}
+          </Card.Body>
+        </Card>
       )}
-    </Form.Group>
+    </div>
   );
 };
 
