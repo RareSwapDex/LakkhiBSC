@@ -549,4 +549,137 @@
   width: 100%;
   height: 300px;
   background: #333;
+}
+
+/* Rich Text Editor Styles */
+.rich-text-editor {
+  margin-bottom: 1.5rem;
+}
+
+.editor-card {
+  border-color: #dee2e6;
+  overflow: hidden;
+}
+
+.editor-card .card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.5rem 1rem;
+}
+
+.editor-tabs .nav-link {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* Quill editor customization */
+.quill {
+  border-radius: 0;
+}
+
+.ql-toolbar {
+  border: none !important;
+  border-bottom: 1px solid #dee2e6 !important;
+  background-color: #f8f9fa;
+  padding: 8px !important;
+}
+
+.ql-container {
+  border: none !important;
+  font-family: inherit !important;
+  font-size: 1rem !important;
+}
+
+.ql-editor {
+  min-height: 200px;
+  padding: 1rem !important;
+}
+
+.ql-editor.ql-blank::before {
+  font-style: normal !important;
+  color: #6c757d !important;
+  font-size: 1rem !important;
+}
+
+.ql-snow .ql-picker.ql-header .ql-picker-label::before,
+.ql-snow .ql-picker.ql-header .ql-picker-item::before {
+  font-weight: 600;
+}
+
+/* Preview content styling */
+.content-preview {
+  background-color: #fff;
+  min-height: 200px;
+}
+
+.preview-content {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.preview-content h1, 
+.preview-content h2, 
+.preview-content h3, 
+.preview-content h4, 
+.preview-content h5, 
+.preview-content h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.preview-content h1 { font-size: 2.25rem; }
+.preview-content h2 { font-size: 1.8rem; }
+.preview-content h3 { font-size: 1.5rem; }
+.preview-content h4 { font-size: 1.25rem; }
+.preview-content h5 { font-size: 1.1rem; }
+.preview-content h6 { font-size: 1rem; }
+
+.preview-content p {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.preview-content blockquote {
+  border-left: 4px solid #dee2e6;
+  padding-left: 1rem;
+  margin-left: 0;
+  color: #6c757d;
+}
+
+.preview-content pre {
+  background-color: #f8f9fa;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  overflow: auto;
+}
+
+.preview-content code {
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background-color: #f8f9fa;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.preview-content pre code {
+  padding: 0;
+  background-color: transparent;
+}
+
+.preview-content ul, 
+.preview-content ol {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  padding-left: 2rem;
+}
+
+.preview-content img {
+  max-width: 100%;
+  height: auto;
 } 

@@ -5,6 +5,7 @@ import axios from 'axios';
 import { ProviderContext } from '../../web3/ProviderContext';
 import TokenSelector from '../../components/TokenSelector';
 import ImageUploader from '../../components/ImageUploader';
+import RichTextEditor from '../../components/RichTextEditor';
 import projectService from '../../services/projectService';
 import Web3 from 'web3';
 
@@ -239,6 +240,17 @@ const CreateCampaignPage = () => {
     let isValid = true;
     let invalidTabKey = null;
     
+    // Helper function to get text content length from HTML
+    const getTextContentLength = (html) => {
+      if (!html) return 0;
+      // Create a temporary element to parse the HTML
+      const tempElement = document.createElement('div');
+      tempElement.innerHTML = html;
+      // Get the text content (strips all HTML tags)
+      const textContent = tempElement.textContent || tempElement.innerText || '';
+      return textContent.trim().length;
+    };
+    
     // Validate basic info
     if (!formData.basics.projectTitle || !formData.basics.projectDescription || !formData.basics.projectFundAmount) {
       setError('Please fill out all required fields in the Basics section');
@@ -260,9 +272,10 @@ const CreateCampaignPage = () => {
       invalidTabKey = invalidTabKey || 'basics';
     }
     
-    // Validate detailed story
-    if (!formData.story.projectStory || formData.story.projectStory.length < 100) {
-      setError('Please provide a more detailed project story (at least 100 characters)');
+    // Validate detailed story - updated for rich text content
+    const storyTextLength = getTextContentLength(formData.story.projectStory);
+    if (!formData.story.projectStory || storyTextLength < 100) {
+      setError('Please provide a more detailed project story (at least 100 characters of text)');
       isValid = false;
       invalidTabKey = invalidTabKey || 'story';
     }
@@ -1816,60 +1829,62 @@ const CreateCampaignPage = () => {
               
               <Form.Group className="mb-3">
                 <Form.Label>Project Story*</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={6}
+                <RichTextEditor
                   value={formData.story.projectStory}
-                  onChange={(e) => handleInputChange('story', 'projectStory', e.target.value)}
+                  onChange={(content) => handleInputChange('story', 'projectStory', content)}
                   required
                   placeholder="Describe your project in detail. What are you creating and why is it important?"
+                  label="Project Story*"
+                  minHeight="300px"
+                  helpText={
+                    formData.story.projectStory.length > 0 
+                      ? `${formData.story.projectStory.replace(/<[^>]*>/g, '').length} characters (min 100 recommended)` 
+                      : "Minimum 100 characters recommended"
+                  }
                 />
-                <Form.Text className="text-muted">
-                  {formData.story.projectStory.length} characters (min 100 recommended)
-                </Form.Text>
               </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Project Goals</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
+                <RichTextEditor
                   value={formData.story.projectGoals}
-                  onChange={(e) => handleInputChange('story', 'projectGoals', e.target.value)}
+                  onChange={(content) => handleInputChange('story', 'projectGoals', content)}
                   placeholder="What specific goals are you trying to achieve with this funding?"
+                  label="Project Goals"
+                  minHeight="200px"
                 />
               </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Project Timeline</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
+                <RichTextEditor
                   value={formData.story.projectTimeline}
-                  onChange={(e) => handleInputChange('story', 'projectTimeline', e.target.value)}
+                  onChange={(content) => handleInputChange('story', 'projectTimeline', content)}
                   placeholder="Outline the major phases and timeline of your project"
+                  label="Project Timeline"
+                  minHeight="200px"
                 />
               </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Budget Breakdown</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
+                <RichTextEditor
                   value={formData.story.projectBudget}
-                  onChange={(e) => handleInputChange('story', 'projectBudget', e.target.value)}
+                  onChange={(content) => handleInputChange('story', 'projectBudget', content)}
                   placeholder="How will you use the funds? Provide a breakdown of your budget."
+                  label="Budget Breakdown"
+                  minHeight="200px"
                 />
               </Form.Group>
               
               <Form.Group className="mb-3">
                 <Form.Label>Risks and Challenges</Form.Label>
-                <Form.Control
-                  as="textarea"
-                  rows={4}
+                <RichTextEditor
                   value={formData.story.projectRisks}
-                  onChange={(e) => handleInputChange('story', 'projectRisks', e.target.value)}
+                  onChange={(content) => handleInputChange('story', 'projectRisks', content)}
                   placeholder="What risks or challenges might you face, and how will you address them?"
+                  label="Risks and Challenges"
+                  minHeight="200px"
                 />
               </Form.Group>
             </Card.Body>
