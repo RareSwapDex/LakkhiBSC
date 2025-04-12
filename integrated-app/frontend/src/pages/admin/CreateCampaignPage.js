@@ -1747,6 +1747,11 @@ const CreateCampaignPage = () => {
               <li>You can designate a different wallet address as the "Contract Owner" who will receive the funds</li>
               <li>Only the contract owner wallet can withdraw or manage campaign funds</li>
               <li>Ownership cannot be transferred later, so ensure you have access to the contract owner wallet</li>
+              <li>Your form data is auto-saved as you progress through each section</li>
+              <li>You can preview your campaign before submitting to see exactly how it will appear</li>
+              <li>All fields are validated in real-time to ensure your campaign is complete</li>
+              <li>ENS names are supported for contract owner addresses on Ethereum mainnet</li>
+              <li>Transaction gas fees are estimated before submission for better transparency</li>
             </ul>
           </Card.Text>
         </Card.Body>
