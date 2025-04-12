@@ -16,11 +16,11 @@ const ProjectDetailsPage = () => {
     const fetchProjectData = async () => {
       try {
         // Fetch project details
-        const projectResponse = await axios.get(`http://localhost:8000/api/projects/${id}/`);
+        const projectResponse = await axios.get(`${process.env.REACT_APP_API_URL || ''}/api/projects/${id}/`);
         setProject(projectResponse.data);
         
         // Fetch incentives
-        const incentivesResponse = await axios.get(`http://localhost:8000/api/incentives/${id}/`);
+        const incentivesResponse = await axios.get(`${process.env.REACT_APP_API_URL || ''}/api/incentives/${id}/`);
         setIncentives(incentivesResponse.data.incentives);
         
         setLoading(false);

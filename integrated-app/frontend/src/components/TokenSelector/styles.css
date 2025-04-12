@@ -1,0 +1,96 @@
+.token-selector {
+  transition: all 0.3s ease;
+}
+
+.token-selector-popular {
+  border-color: #dee2e6;
+  transition: all 0.2s ease;
+}
+
+.popular-token-item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid #eaecef;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.popular-token-item:hover {
+  background-color: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+.token-logo {
+  width: 32px;
+  height: 32px;
+  margin-right: 10px;
+  border-radius: 50%;
+  object-fit: contain;
+}
+
+.token-info {
+  flex: 1;
+}
+
+.token-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.token-address {
+  font-size: 0.7rem;
+  color: #6c757d;
+}
+
+.token-validation-success {
+  display: flex;
+  align-items: center;
+  color: #198754;
+  font-weight: 600;
+}
+
+.token-info-card {
+  border-color: #198754;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  animation: slideIn 0.3s ease;
+}
+
+.token-address-code {
+  font-size: 0.8rem;
+  word-break: break-all;
+  background-color: #f8f9fa;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.chain-badge {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chain-badge:hover {
+  opacity: 0.9;
+  transform: scale(1.05);
+}
+
+.market-data {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+} 
