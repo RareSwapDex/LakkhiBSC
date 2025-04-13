@@ -5,6 +5,47 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --background-color: #ffffff;
+  --text-color: #333333;
+  --card-bg: #ffffff;
+  --border-color: #e0e0e0;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --primary-color: #f39c12;
+  --secondary-color: #e67e22;
+  --highlight-bg: rgba(243, 156, 18, 0.1);
+  --muted-text: #666666;
+  --footer-bg: #2c3e50;
+  --footer-text: #ecf0f1;
+  --navbar-bg: #ffffff;
+  --navbar-text: #333333;
+  --success-color: #2ecc71;
+  --error-color: #e74c3c;
+  --info-color: #3498db;
+  --warning-color: #f39c12;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+/* Dark Theme */
+body.dark-theme {
+  --background-color: #1a1a1a;
+  --text-color: #f0f0f0;
+  --card-bg: #2a2a2a;
+  --border-color: #444444;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --primary-color: #f39c12;
+  --secondary-color: #e67e22;
+  --highlight-bg: rgba(243, 156, 18, 0.2);
+  --muted-text: #b0b0b0;
+  --footer-bg: #121212;
+  --footer-text: #f0f0f0;
+  --navbar-bg: #1a1a1a;
+  --navbar-text: #f0f0f0;
+  --success-color: #2ecc71;
+  --error-color: #e74c3c;
+  --info-color: #3498db;
+  --warning-color: #f39c12;
 }
 
 code {
@@ -26,7 +67,44 @@ a {
 
 /* Set default text color and background */
 body {
-  color: #333;
-  background-color: #f9f9f9;
   line-height: 1.6;
+}
+
+/* Applying theme colors to common elements */
+.card, .benefit-card, .step, .campaign-card, .testimonial-carousel {
+  background-color: var(--card-bg);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-color);
+}
+
+p {
+  color: var(--muted-text);
+}
+
+.navbar {
+  background-color: var(--navbar-bg) !important;
+  color: var(--navbar-text) !important;
+}
+
+.navbar .nav-link {
+  color: var(--navbar-text) !important;
+}
+
+.footer {
+  background-color: var(--footer-bg);
+  color: var(--footer-text);
+}
+
+input, textarea, select {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary-color);
 } 

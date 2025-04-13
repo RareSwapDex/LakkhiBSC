@@ -3,6 +3,7 @@ import { Navbar as BootstrapNavbar, Container, Nav, Button, Badge, Spinner } fro
 import { Link, NavLink } from 'react-router-dom';
 import { ProviderContext } from '../web3/ProviderContext';
 import './Navbar.css';
+import ThemeToggle from './ThemeToggle';
 
 const Navbar = () => {
   const { account, isConnected, isLoading, connectWallet, disconnectWallet } = useContext(ProviderContext);
@@ -68,6 +69,9 @@ const Navbar = () => {
               </Button>
             )}
           </Nav>
+          <div className="ms-auto d-flex align-items-center">
+            <ThemeToggle />
+          </div>
         </BootstrapNavbar.Collapse>
       </Container>
     </BootstrapNavbar>
