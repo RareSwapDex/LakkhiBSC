@@ -617,4 +617,30 @@
   .newsletter-section {
     padding: 3rem 1.5rem;
   }
+}
+
+/* FAQ Section */
+.faq-section {
+  padding: 5rem 2rem;
+  background-color: var(--background-color);
+  position: relative;
+}
+
+.faq-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    rgba(243, 156, 18, 0) 0%, 
+    rgba(243, 156, 18, 0.3) 50%, 
+    rgba(243, 156, 18, 0) 100%);
+}
+
+@media (max-width: 768px) {
+  .faq-section {
+    padding: 4rem 1rem;
+  }
 } 
