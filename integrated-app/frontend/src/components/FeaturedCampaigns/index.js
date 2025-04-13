@@ -80,6 +80,9 @@ const FeaturedCampaigns = () => {
               <div className="campaign-days-left">
                 <span>{campaign.daysLeft} days left</span>
               </div>
+              <div className="campaign-example-tag">
+                EXAMPLE
+              </div>
             </div>
             
             <div className="campaign-content">

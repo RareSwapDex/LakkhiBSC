@@ -5,9 +5,9 @@ import './StatsCounter.css';
 
 // These would typically come from an API in production
 const platformStats = {
-  projectsFunded: 124,
-  totalRaised: 2500000, // In USD
-  uniqueDonors: 7850
+  projectsFunded: 5,
+  totalRaised: 75255, // In USD
+  uniqueDonors: 6
 };
 
 const StatsCounter = () => {
@@ -112,6 +112,10 @@ const StatsCounter = () => {
           <div className="stat-value">{formatNumber(counters.uniqueDonors)}</div>
           <div className="stat-label">Unique Donors</div>
         </div>
+      </div>
+      
+      <div className="stats-disclaimer">
+        * These figures represent early platform activity and will grow as more users join
       </div>
     </div>
   );

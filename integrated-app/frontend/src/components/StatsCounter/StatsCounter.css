@@ -63,6 +63,15 @@
   font-weight: 500;
 }
 
+.stats-disclaimer {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+  margin-top: 2rem;
+  padding: 0 1rem;
+}
+
 /* Animation for counter */
 @keyframes countUp {
   from {

@@ -56,6 +56,21 @@
   font-weight: 500;
 }
 
+.campaign-example-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(243, 156, 18, 0.9);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 .campaign-content {
   padding: 1.5rem;
   flex: 1;
