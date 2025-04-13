@@ -1,0 +1,78 @@
+{
+  "home": {
+    "hero": {
+      "title": "Fundraise in Your Own Token",
+      "description": "The decentralized platform that helps Web3 projects raise funds with zero fees on donations, boosting token utility and adoption.",
+      "createButton": "Create Campaign",
+      "exploreButton": "Explore Projects"
+    },
+    "stats": {
+      "title": "Our Impact",
+      "subtitle": "Join the growing community of projects and donors"
+    },
+    "tokenExplainer": {
+      "title": "How Token Fundraising Works",
+      "subtitle": "A simple explanation of our token-based fundraising model"
+    },
+    "whitepaper": {
+      "title": "Learn More About Lakkhi Fund",
+      "description": "Dive deep into our platform's architecture, token integration, and how we're revolutionizing Web3 fundraising with 0% fees on donations.",
+      "button": "Read Our Whitepaper"
+    },
+    "benefits": {
+      "title": "Why Use Lakkhi Fund for Your Token Project?",
+      "zeroPlatformFees": {
+        "title": "100% of Donations Go to Projects",
+        "description": "Unlike other platforms, we take 0% fees from donor contributions. Every token donated goes directly to the project."
+      },
+      "useYourOwnToken": {
+        "title": "Fundraise in Your Own Token",
+        "description": "Use your existing project token for fundraising instead of having to create a new token or use a platform token."
+      },
+      "dualPayment": {
+        "title": "Dual Payment Options",
+        "description": "Accept contributions directly in your token or via credit card - which automatically converts to your token."
+      },
+      "priceImpact": {
+        "title": "Positive Token Price Impact",
+        "description": "Create buying pressure and reduce circulating supply, potentially benefiting your token's economics."
+      }
+    },
+    "featuredCampaigns": {
+      "title": "Featured Campaigns",
+      "subtitle": "Support these innovative projects raising funds on Lakkhi Fund",
+      "viewAllButton": "View All Campaigns"
+    },
+    "testimonials": {
+      "title": "Success Stories",
+      "subtitle": "Hear from projects that have successfully raised funds on our platform"
+    },
+    "howItWorks": {
+      "title": "How It Works",
+      "steps": {
+        "step1": {
+          "title": "Connect Your Wallet",
+          "description": "Sign in with your Web3 wallet to verify ownership."
+        },
+        "step2": {
+          "title": "Create Your Campaign",
+          "description": "Specify your token, funding goals, and campaign details."
+        },
+        "step3": {
+          "title": "Receive Contributions",
+          "description": "Contributors can use crypto or credit card to support your project with 0% platform fees."
+        },
+        "step4": {
+          "title": "Manage Your Funds",
+          "description": "100% of funds are transferred directly to your wallet upon campaign completion."
+        }
+      },
+      "startButton": "Start Your Campaign"
+    }
+  },
+  "common": {
+    "daysLeft": "{{count}} days left",
+    "of": "of",
+    "supportProject": "Support Project"
+  }
+} 
