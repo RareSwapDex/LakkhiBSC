@@ -1,12 +1,23 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHoldingUsd } from '@fortawesome/free-solid-svg-icons';
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
-import TestimonialCarousel from '../../components/TestimonialCarousel';
-import StatsCounter from '../../components/StatsCounter';
-import FeaturedCampaigns from '../../components/FeaturedCampaigns';
+import TokenExplainer from '../../components/TokenExplainer';
+import NewsletterSignup from '../../components/NewsletterSignup';
 import './HomePage.css';
+
+// Lazy loaded components
+const StatsCounter = lazy(() => import('../../components/StatsCounter'));
+const TestimonialCarousel = lazy(() => import('../../components/TestimonialCarousel'));
+const FeaturedCampaigns = lazy(() => import('../../components/FeaturedCampaigns'));
+
+// Loading placeholder
+const LoadingPlaceholder = () => (
+  <div className="loading-placeholder">
+    <div className="loading-spinner"></div>
+  </div>
+);
 
 const HomePage = () => {
   useEffect(() => {
@@ -30,7 +41,11 @@ const HomePage = () => {
           </div>
         </div>
         <div className="hero-image">
-          <img src="/images/hero-banner.svg" alt="Lakkhi Fund Platform" />
+          <img 
+            src="/images/hero-banner.svg" 
+            alt="Lakkhi Fund Platform" 
+            loading="lazy"
+          />
         </div>
       </section>
 
@@ -43,7 +58,16 @@ const HomePage = () => {
       <section className="platform-stats-section">
         <h2>Our Impact</h2>
         <p className="section-subtitle">Join the growing community of projects and donors</p>
-        <StatsCounter />
+        <Suspense fallback={<LoadingPlaceholder />}>
+          <StatsCounter />
+        </Suspense>
+      </section>
+      
+      {/* Token Explainer Section */}
+      <section className="token-explainer-section">
+        <h2>How Token Fundraising Works</h2>
+        <p className="section-subtitle">A simple explanation of our token-based fundraising model</p>
+        <TokenExplainer />
       </section>
       
       {/* Whitepaper CTA Section */}
@@ -102,14 +126,18 @@ const HomePage = () => {
       <section className="featured-campaigns-section">
         <h2>Featured Campaigns</h2>
         <p className="section-subtitle">Support these innovative projects raising funds on Lakkhi Fund</p>
-        <FeaturedCampaigns />
+        <Suspense fallback={<LoadingPlaceholder />}>
+          <FeaturedCampaigns />
+        </Suspense>
       </section>
 
       {/* Testimonials Section */}
       <section className="testimonials-section">
         <h2>Success Stories</h2>
         <p className="section-subtitle">Hear from projects that have successfully raised funds on our platform</p>
-        <TestimonialCarousel />
+        <Suspense fallback={<LoadingPlaceholder />}>
+          <TestimonialCarousel />
+        </Suspense>
       </section>
 
       {/* How It Works Section */}
@@ -143,6 +171,11 @@ const HomePage = () => {
         <div className="cta-center">
           <Link to="/admin/create-campaign" className="primary-button">Start Your Campaign</Link>
         </div>
+      </section>
+      
+      {/* Newsletter Section */}
+      <section className="newsletter-section">
+        <NewsletterSignup />
       </section>
     </div>
   );
