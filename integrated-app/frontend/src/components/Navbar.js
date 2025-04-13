@@ -1,10 +1,11 @@
-import React, { useContext, useEffect } from 'react';
-import { Navbar as BootstrapNavbar, Container, Nav, Button, Badge } from 'react-bootstrap';
+import React, { useContext } from 'react';
+import { Navbar as BootstrapNavbar, Container, Nav, Button, Badge, Spinner } from 'react-bootstrap';
 import { Link, NavLink } from 'react-router-dom';
 import { ProviderContext } from '../web3/ProviderContext';
+import './Navbar.css';
 
 const Navbar = () => {
-  const { account, isConnected, connectWallet, disconnectWallet } = useContext(ProviderContext);
+  const { account, isConnected, isLoading, connectWallet, disconnectWallet } = useContext(ProviderContext);
 
   // Format the wallet address for display
   const formatAddress = (address) => {
@@ -12,21 +13,16 @@ const Navbar = () => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
-  // Check for wallet connection on component mount
-  useEffect(() => {
-    // Check localStorage for verified wallet
-    const verifiedWallet = localStorage.getItem('lakkhi_verified_wallet');
-    if (verifiedWallet && !isConnected) {
-      // Try to reconnect wallet
-      connectWallet();
-    }
-  }, [connectWallet, isConnected]);
-
   return (
     <BootstrapNavbar bg="light" expand="lg" className="mb-4">
       <Container>
-        <BootstrapNavbar.Brand as={Link} to="/">
-          Lakkhi Funding
+        <BootstrapNavbar.Brand as={Link} to="/" className="d-flex align-items-center">
+          <img 
+            src="/images/logo-final.png" 
+            alt="Lakkhi Fund" 
+            height="70" 
+            className="d-inline-block align-top"
+          />
         </BootstrapNavbar.Brand>
         <BootstrapNavbar.Toggle aria-controls="basic-navbar-nav" />
         <BootstrapNavbar.Collapse id="basic-navbar-nav">
@@ -36,6 +32,9 @@ const Navbar = () => {
             </Nav.Link>
             <Nav.Link as={NavLink} to="/projects">
               Explore Campaigns
+            </Nav.Link>
+            <Nav.Link as={NavLink} to="/faq">
+              FAQ
             </Nav.Link>
           </Nav>
           <Nav>
@@ -52,8 +51,20 @@ const Navbar = () => {
                 </Button>
               </div>
             ) : (
-              <Button variant="primary" size="sm" onClick={connectWallet}>
-                Connect Wallet
+              <Button 
+                variant="primary" 
+                size="sm" 
+                onClick={connectWallet}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" className="me-1" />
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect Wallet'
+                )}
               </Button>
             )}
           </Nav>

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lakkhi Campaign Creation System - Documentation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    pre {
+      background-color: #f6f8fa;
+      border-radius: 6px;
+      padding: 16px;
+      overflow: auto;
+    }
+    code {
+      font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+      background-color: rgba(27, 31, 35, 0.05);
+      border-radius: 3px;
+      padding: 0.2em 0.4em;
+    }
+    pre code {
+      background-color: transparent;
+      padding: 0;
+    }
+    h1, h2, h3, h4 {
+      margin-top: 24px;
+      margin-bottom: 16px;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    h1 { font-size: 2em; padding-bottom: 10px; border-bottom: 1px solid #eaecef; }
+    h2 { font-size: 1.5em; padding-bottom: 8px; border-bottom: 1px solid #eaecef; }
+    h3 { font-size: 1.25em; }
+    h4 { font-size: 1em; }
+    .hljs-string { color: #032f62; }
+    .hljs-keyword { color: #d73a49; }
+    .hljs-function { color: #6f42c1; }
+    .hljs-comment { color: #6a737d; }
+    .badge-new {
+      background-color: #28a745;
+      color: white;
+      font-size: 0.7em;
+      padding: 3px 6px;
+      border-radius: 4px;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Lakkhi Campaign Creation System - Technical Documentation</h1>
+    
+    <div class="alert alert-info">
+      <strong>Updated Documentation:</strong> For detailed information about all the new campaign creation features, see the <a href="campaign-creation.md" class="alert-link">Campaign Creation Documentation</a>.
+    </div>
+
+    <h2>Overview</h2>
+    <p>The enhanced campaign creation system provides a feature-rich interface for creating blockchain-funded campaigns with sophisticated content creation tools, template selection, and SEO optimization. Our latest update includes major usability improvements such as progress tracking, form persistence, live preview, and better validation.</p>
+
+    <h2>Core Components</h2>
+
+    <h3>1. FormProgressBar <span class="badge-new">New</span></h3>
+    <p>A visual progress indicator for multi-step forms:</p>
+    <ul>
+      <li>Shows current active step highlighted</li>
+      <li>Displays completed steps with checkmarks</li>
+      <li>Calculates overall percentage completion</li>
+      <li>Automatically tracks step completion as fields are validated</li>
+    </ul>
+
+    <h3>2. FormField <span class="badge-new">New</span></h3>
+    <p>Enhanced form control with built-in validation:</p>
+    <ul>
+      <li>Real-time field validation with immediate feedback</li>
+      <li>Support for custom validation functions</li>
+      <li>Validation on blur, input, and form section changes</li>
+      <li>Contextual error messaging</li>
+      <li>Built-in responsive design</li>
+    </ul>
+
+    <h3>3. TokenSelector <span class="badge-new">New</span></h3>
+    <p>Improved token selection and validation:</p>
+    <ul>
+      <li>Popular token suggestions by blockchain</li>
+      <li>Token data retrieval (symbol, name, decimals)</li>
+      <li>Market data integration with price information</li>
+      <li>Validation messages and loading states</li>
+      <li>Support for multiple blockchains</li>
+    </ul>
+
+    <h3>4. ContractOwnerSelector <span class="badge-new">New</span></h3>
+    <p>Specialized wallet address input:</p>
+    <ul>
+      <li>ENS name lookup and resolution support</li>
+      <li>"My Wallet" option to use connected wallet</li>
+      <li>Address format validation</li>
+      <li>Wallet status indicators</li>
+      <li>Security-focused design to prevent errors</li>
+    </ul>
+
+    <h3>5. LivePreview <span class="badge-new">New</span></h3>
+    <p>Real-time campaign visualization:</p>
+    <ul>
+      <li>Desktop and mobile toggle views</li>
+      <li>Real-time updates as form is completed</li>
+      <li>Multiple campaign sections (overview, milestones, team)</li>
+      <li>Funding progress visualization</li>
+    </ul>
+
+    <h3>6. SubmitConfirmationModal <span class="badge-new">New</span></h3>
+    <p>Pre-submission review and confirmation:</p>
+    <ul>
+      <li>Campaign summary display</li>
+      <li>Gas cost estimation (low/medium/high)</li>
+      <li>Pre-submission checklist</li>
+      <li>Deployment status visualization</li>
+      <li>Animated state transitions</li>
+    </ul>
+
+    <h3>7. ImageUploader</h3>
+    <p>A versatile image upload component with multiple import methods:</p>
+    <ul>
+      <li>Drag-and-drop file upload</li>
+      <li>Image URL import</li>
+      <li>Clipboard paste support</li>
+      <li>Cloud storage integration</li>
+      <li>Image preview with edit/remove capabilities</li>
+    </ul>
+
+    <h3>8. RichTextEditor</h3>
+    <p>A full-featured text editor for campaign descriptions:</p>
+    <ul>
+      <li>Formatting toolbar (bold, italic, lists, etc.)</li>
+      <li>Image and video embedding</li>
+      <li>AI content suggestions</li>
+      <li>HTML editing mode</li>
+      <li>Fullscreen mode</li>
+      <li>Content metrics (word/character count)</li>
+    </ul>
+
+    <h2>Custom Hooks</h2>
+
+    <h3>useFormPersistence <span class="badge-new">New</span></h3>
+    <p>Manages form state persistence to localStorage:</p>
+    <ul>
+      <li>Automatic or manual saving options</li>
+      <li>Data expiration settings (24-hour default)</li>
+      <li>Functions for persisting and clearing form data</li>
+      <li>Automatic retrieval on page load</li>
+    </ul>
+
+    <pre><code class="language-jsx">const [formData, setFormData, persistForm, clearPersistedForm] = useFormPersistence(
+  'form_storage_key',
+  initialFormState,
+  false // Save manually rather than on every change
+);</code></pre>
+
+    <h2>Main Campaign Page Implementation</h2>
+
+    <p>The <code>CreateCampaignPage.js</code> has been completely enhanced with the following improvements:</p>
+
+    <ol>
+      <li>
+        <strong>Progress Tracking</strong>
+        <ul>
+          <li>Visual progress bar showing completion status</li>
+          <li>Step-by-step validation and form completion</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Form Persistence</strong>
+        <ul>
+          <li>Auto-save when navigating between tabs</li>
+          <li>Manual save button with notification</li>
+          <li>Recovery from browser crashes or accidental closures</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Enhanced Field Validation</strong>
+        <ul>
+          <li>Real-time validation as users type or leave fields</li>
+          <li>Clear error messages for each field</li>
+          <li>Section validation when navigating between tabs</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Improved Submission UX</strong>
+        <ul>
+          <li>Detailed confirmation modal</li>
+          <li>Gas fee estimates for deployment</li>
+          <li>Better error handling and recovery</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Preview Tab</strong>
+        <ul>
+          <li>Live preview with desktop/mobile toggle</li>
+          <li>Complete visualization of campaign before submission</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>Blockchain Integration</h2>
+
+    <p>Key blockchain features in the system:</p>
+
+    <ol>
+      <li>
+        <strong>Enhanced Token Validation <span class="badge-new">Improved</span></strong>
+        <ul>
+          <li>Popular token suggestions by blockchain</li>
+          <li>Market data and price information</li>
+          <li>Multiple blockchain support (Ethereum, BSC, Base, Polygon)</li>
+          <li>Token details display with validation</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Gas Estimation <span class="badge-new">New</span></strong>
+        <ul>
+          <li>Pre-transaction gas estimates (low, medium, high)</li>
+          <li>USD price conversion for gas fees</li>
+          <li>Blockchain-specific gas calculations</li>
+        </ul>
+      </li>
+      <li>
+        <strong>ENS Resolution <span class="badge-new">New</span></strong>
+        <ul>
+          <li>ENS name lookup and resolution on Ethereum</li>
+          <li>Address display with ENS names when available</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Network Switching</strong>
+        <ul>
+          <li>Detects network mismatches (when wallet network differs from token blockchain)</li>
+          <li>Provides network switching functionality</li>
+        </ul>
+      </li>
+    </ol>
+
+    <h2>Implementation Examples</h2>
+
+    <h3>Form Progress Bar Usage <span class="badge-new">New</span></h3>
+    <pre><code class="language-jsx">&lt;FormProgressBar 
+  steps={[
+    { key: 'basics', label: 'Basics' },
+    { key: 'story', label: 'Story' },
+    { key: 'team', label: 'Team' },
+    { key: 'milestones', label: 'Milestones' }
+  ]} 
+  activeStep={activeTab} 
+  completedSteps={completedSteps} 
+/&gt;</code></pre>
+
+    <h3>Form Field with Validation <span class="badge-new">New</span></h3>
+    <pre><code class="language-jsx">&lt;FormField
+  label="Campaign Title"
+  value={formData.basics.projectTitle}
+  onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
+  required
+  validate={(val) => val && val.trim().length > 0}
+  errorMessage="Campaign title is required"
+  placeholder="Enter a descriptive title"
+/&gt;</code></pre>
+
+    <h3>Contract Owner Selector <span class="badge-new">New</span></h3>
+    <pre><code class="language-jsx">&lt;ContractOwnerSelector
+  value={formData.basics.contractOwnerAddress}
+  onChange={(value) => handleInputChange('basics', 'contractOwnerAddress', value)}
+  connectedWallet={account}
+  onValidate={(isValid, address) => {
+    if (!isValid) {
+      setFieldErrors(prev => ({
+        ...prev,
+        'basics.contractOwnerAddress': 'Invalid wallet address'
+      }));
+    } else {
+      // Clear error if valid
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors['basics.contractOwnerAddress'];
+        return newErrors;
+      });
+    }
+  }}
+/&gt;</code></pre>
+
+    <h3>Live Preview Usage <span class="badge-new">New</span></h3>
+    <pre><code class="language-jsx">&lt;LivePreview 
+  formData={formData} 
+  tokenInfo={tokenInfo} 
+/&gt;</code></pre>
+
+    <h2>File Structure (Updated)</h2>
+    <pre><code>integrated-app/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ContractOwnerSelector/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   ├── FormField/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   ├── FormProgressBar/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   ├── ImageUploader/
+│   │   │   │   ├── index.js
+│   │   │   │   └── ImageUploader.css
+│   │   │   ├── LivePreview/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   ├── RichTextEditor/
+│   │   │   │   ├── index.js
+│   │   │   │   └── RichTextEditor.css
+│   │   │   ├── SubmitConfirmationModal/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   ├── TokenSelector/
+│   │   │   │   ├── index.js
+│   │   │   │   └── styles.css
+│   │   │   └── ...
+│   │   ├── hooks/
+│   │   │   └── useFormPersistence.js
+│   │   └── pages/
+│   │       └── admin/
+│   │           ├── CreateCampaignPage.js
+│   │           └── CreateCampaignPage.css
+│   └── ...
+└── docs/
+    ├── index.html
+    └── campaign-creation.md</code></pre>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+</body>
+</html> 

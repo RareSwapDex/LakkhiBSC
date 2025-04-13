@@ -1,23 +1,29 @@
 #!/bin/bash
-set -e
 
-# Check if running in backend directory
-if [ -f "manage.py" ]; then
-    echo "Building Django backend..."
-    pip install -r requirements.txt
-    python manage.py collectstatic --noinput
-    # No need to run migrations as we're using in-memory sqlite
-    exit 0
-fi
+# This script is called by Vercel during the Build step
 
-# Check if running in frontend directory
-if [ -f "package.json" ]; then
-    echo "Building React frontend..."
-    npm install
-    npm run build
-    exit 0
-fi
+echo "=============================================="
+echo "Starting Lakkhi build process..."
+echo "=============================================="
 
-# If not in a specific directory, do nothing
-echo "Not in backend or frontend directory, skipping build"
-exit 0 
+# Install backend dependencies
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
+
+# Configure environment for Django
+echo "Configuring Django environment..."
+export DJANGO_SETTINGS_MODULE="lakkhi.settings_prod"
+export DATABASE_URL="sqlite://:memory:"
+export ALLOWED_HOSTS=".vercel.app"
+export CORS_ALLOW_ALL_ORIGINS="True"
+
+# Build the frontend
+echo "Building the frontend..."
+cd frontend
+npm install --include=dev
+npm run build
+cd ..
+
+echo "=============================================="
+echo "Lakkhi build process completed."
+echo "==============================================" 

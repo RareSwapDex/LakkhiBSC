@@ -1,4 +1,10 @@
 const whitepaperContent = {
+  logo: "/images/logo-final.png",
+  primaryColor: "#f39c12",
+  secondaryColor: "#2ecc71",
+  title: "Lakkhi Fund Whitepaper",
+  subtitle: "Token-Based Fundraising with 100% Donation Pass-Through",
+  version: "v1.2",
   sections: [
     {
       id: "introduction",
@@ -19,12 +25,13 @@ const whitepaperContent = {
             "Existing crypto platforms create friction for non-crypto users",
             "High gas fees discourage small contributions",
             "Projects need to create utility for their tokens to increase adoption",
-            "Centralized platforms require trust in intermediaries"
+            "Centralized platforms take excessive fees from donations, reducing impact",
+            "Lack of transparency in how funds are managed and distributed"
           ]
         },
         {
           type: "paragraph",
-          text: "Lakkhi Fund addresses these challenges through a decentralized approach that puts projects and their tokens at the center of the fundraising process."
+          text: "Lakkhi Fund addresses these challenges through a decentralized approach that puts projects and their tokens at the center of the fundraising process, ensuring 100% of donations reach the intended recipients."
         },
         {
           type: "heading",
@@ -37,10 +44,12 @@ const whitepaperContent = {
         {
           type: "list",
           items: [
+            "Ensuring 100% of donations go directly to projects",
             "Increasing token visibility and utility",
             "Creating buying pressure for the token",
             "Reducing circulating supply",
-            "Reaching both crypto and non-crypto contributors"
+            "Reaching both crypto and non-crypto contributors",
+            "Providing complete transparency through blockchain technology"
           ]
         }
       ]
@@ -63,7 +72,8 @@ const whitepaperContent = {
             "Frontend Application: React-based user interface for campaign creation, management, and contributions",
             "Backend API: Django-based system that handles business logic, authentication, and blockchain interactions",
             "Smart Contracts: Ethereum/BSC compatible contracts for token staking and fund management",
-            "Decentralized Wallet System: Wallet-based authentication and verification"
+            "Decentralized Wallet System: Wallet-based authentication and verification",
+            "Direct Fund Routing: Ensures 100% of donations go straight to project wallets"
           ]
         },
         {
@@ -84,7 +94,8 @@ const whitepaperContent = {
             "Validates token contracts on-chain",
             "Retrieves token metadata (name, symbol, decimals, supply)",
             "Configures smart contracts to work with the specified token",
-            "Provides caching mechanisms to optimize blockchain calls"
+            "Provides caching mechanisms to optimize blockchain calls",
+            "Ensures compatibility with major exchanges and wallets"
           ]
         },
         {
@@ -101,7 +112,8 @@ const whitepaperContent = {
             "Users connect their Web3 wallets (MetaMask, WalletConnect, etc.)",
             "Signature-based verification proves wallet ownership",
             "Campaign ownership is tied directly to wallet addresses",
-            "No username/password combinations to manage or secure"
+            "No username/password combinations to manage or secure",
+            "Complete ownership control for project creators"
           ]
         },
         {
@@ -118,7 +130,8 @@ const whitepaperContent = {
             "Dynamic gas pricing (90-92% of current gas price)",
             "Smart gas estimation based on operation complexity",
             "Multi-level caching to reduce blockchain calls",
-            "Batch processing for certain operations"
+            "Batch processing for certain operations",
+            "Layer 2 support for reduced gas costs (upcoming)"
           ]
         },
         {
@@ -135,7 +148,8 @@ const whitepaperContent = {
             "Credit card payments are automatically converted to the project's token",
             "This creates buying pressure for the token",
             "Contributors receive the equivalent amount of tokens",
-            "Project owners receive funds in their preferred token"
+            "Project owners receive 100% of funds in their preferred token",
+            "Seamless experience for non-crypto users"
           ]
         }
       ]
@@ -158,7 +172,8 @@ const whitepaperContent = {
             "Backend database stores the token address with each project",
             "API endpoints validate token contracts and retrieve metadata",
             "Smart contracts are dynamically configured with the specified token",
-            "Frontend components allow selection and validation of tokens"
+            "Frontend components allow selection and validation of tokens",
+            "Token metrics dashboard shows real-time performance"
           ]
         },
         {
@@ -175,7 +190,9 @@ const whitepaperContent = {
             "Increased Utility: Creates a new use case for the project's token",
             "Enhanced Visibility: Exposes the token to new potential holders",
             "Supply Management: Contributes to reducing circulating supply",
-            "Market Impact: Creates buying pressure through credit card conversions"
+            "Market Impact: Creates buying pressure through credit card conversions",
+            "Community Building: Fosters a stronger token-based community",
+            "Token Value: Potential positive impact on token value through increased demand"
           ]
         }
       ]
@@ -198,7 +215,8 @@ const whitepaperContent = {
             "Replaced centralized wallet services with direct blockchain interaction",
             "Implemented cryptographic signature verification for security",
             "Connected wallet addresses serve as campaign owners",
-            "Smart contracts are deployed with wallet owners as beneficiaries"
+            "Smart contracts are deployed with wallet owners as beneficiaries",
+            "Direct payment routing ensures 100% of donations reach projects"
           ]
         },
         {
@@ -211,7 +229,9 @@ const whitepaperContent = {
             "Signature-based verification ensures only wallet owners can create campaigns",
             "Funds are directly controlled by wallet owners through smart contracts",
             "No platform database access is needed to manage funds",
-            "Critical operations require wallet signature verification"
+            "Critical operations require wallet signature verification",
+            "Regular security audits by third-party experts",
+            "Open-source codebase for transparency and community review"
           ]
         }
       ]
@@ -234,7 +254,8 @@ const whitepaperContent = {
             "Dynamic pricing uses 90-92% of current gas price to reduce costs",
             "Smart estimation adjusts limits based on token complexity and operation type",
             "Transaction fee display shows estimated costs before confirmation",
-            "Different strategies for creators (cost optimization) vs. contributors (balance between cost and speed)"
+            "Different strategies for creators (cost optimization) vs. contributors (balance between cost and speed)",
+            "EIP-1559 support for more predictable transaction fees"
           ]
         },
         {
@@ -251,7 +272,9 @@ const whitepaperContent = {
             "Token information cached for 24 hours",
             "Popular tokens list cached for 1 hour",
             "Background cache updater refreshes token information periodically",
-            "Response compression optimizes API responses"
+            "Response compression optimizes API responses",
+            "CDN integration for static assets",
+            "Optimized frontend bundle size for faster loading"
           ]
         }
       ]
@@ -274,7 +297,9 @@ const whitepaperContent = {
             "Simple Campaign Creation: Intuitive interface for creating campaigns",
             "Token Selection: Ability to use their own token for fundraising",
             "Campaign Management: Tools for updates, analytics, and communication",
-            "Multiple Payment Options: Accept both token and credit card contributions"
+            "Multiple Payment Options: Accept both token and credit card contributions",
+            "100% Donation Pass-Through: All donations go directly to your project",
+            "Transparent Fee Structure: One-time campaign creation fee with no hidden costs"
           ]
         },
         {
@@ -291,7 +316,9 @@ const whitepaperContent = {
             "Flexible Contribution: Contribute with crypto or credit card",
             "Token Transparency: Clear information about which token they're receiving",
             "Cost Efficiency: Optimized gas fees for crypto contributors",
-            "No Crypto Knowledge Required: Credit card users don't need wallets or tokens"
+            "No Crypto Knowledge Required: Credit card users don't need wallets or tokens",
+            "Maximum Impact: 100% of your donation reaches the project",
+            "Trust and Verification: Blockchain-based verification of fund movement"
           ]
         }
       ]
@@ -306,14 +333,15 @@ const whitepaperContent = {
         },
         {
           type: "paragraph",
-          text: "The platform generates revenue through:"
+          text: "Lakkhi Fund's transparent fee structure ensures maximum impact for donors:"
         },
         {
           type: "list",
           items: [
-            "Campaign Creation Fee: One-time fee for creating a campaign",
-            "Contribution Fee: Small percentage of each contribution",
-            "Token Swap Fee: Fee on credit card to token conversions"
+            "Campaign Creation Fee: One-time fee paid by project creators during campaign setup (coming soon)",
+            "Zero Donation Fees: 100% of all donations go directly to the projects",
+            "No Hidden Costs: All platform fees are clearly disclosed upfront",
+            "Third-Party Processing: Credit card processor fees are separate and not kept by Lakkhi Fund"
           ]
         },
         {
@@ -322,15 +350,34 @@ const whitepaperContent = {
         },
         {
           type: "paragraph",
-          text: "The fee structure is designed to:"
+          text: "Our business model is designed to balance platform sustainability with maximizing impact:"
         },
         {
           type: "list",
           items: [
-            "Ensure platform sustainability",
-            "Provide value to both creators and contributors",
-            "Scale with platform growth",
-            "Remain competitive with traditional crowdfunding platforms"
+            "Creator-Supported: Project creators, not donors, support platform costs",
+            "Zero Donation Skimming: Unlike traditional platforms that take 5-10% of donations",
+            "Transparent Operations: Clear separation between platform revenue and project funds",
+            "Efficient Cost Structure: Optimized operations to keep campaign creation fees reasonable",
+            "Value-Driven: Fees aligned with the value received by project creators"
+          ]
+        },
+        {
+          type: "heading",
+          text: "7.3 Campaign Creation Fee Details"
+        },
+        {
+          type: "paragraph",
+          text: "The upcoming campaign creation fee will include:"
+        },
+        {
+          type: "list",
+          items: [
+            "Smart Contract Deployment: Covers gas costs for contract creation",
+            "Token Integration: Technical implementation of custom token support",
+            "Campaign Hosting: Ongoing availability of campaign page and materials",
+            "Support Services: Technical assistance for campaign creators",
+            "Analytics Dashboard: Access to comprehensive performance metrics"
           ]
         }
       ]
@@ -354,7 +401,8 @@ const whitepaperContent = {
             "Wallet-based authentication and verification",
             "Gas fee optimization",
             "Campaign creation and management",
-            "Basic analytics and communication tools"
+            "Basic analytics and communication tools",
+            "100% donation pass-through to projects"
           ]
         },
         {
@@ -368,12 +416,14 @@ const whitepaperContent = {
         {
           type: "list",
           items: [
+            "Campaign Creation Fee Implementation: Sustainable funding model",
             "Token Whitelisting: Admin controls to limit which tokens can be used",
             "Token Price Feeds: Real-time price information for supported tokens",
             "Multi-token Support: Allow campaigns to accept multiple token types",
             "Layer 2 Integration: Support for L2 solutions to further reduce gas costs",
-            "Fee Delegation: Allow project creators to pay fees for contributors",
-            "Enhanced Analytics: Deeper insights into campaign performance"
+            "Enhanced Analytics: Deeper insights into campaign performance",
+            "Mobile Application: Native mobile experience for both creators and contributors",
+            "Expanded Payment Options: Additional fiat gateways for broader reach"
           ]
         }
       ]
@@ -384,15 +434,32 @@ const whitepaperContent = {
       content: [
         {
           type: "paragraph",
-          text: "Lakkhi Fund represents a new paradigm in Web3 fundraising by placing tokens at the center of the fundraising process. By allowing projects to raise funds in their own tokens while enabling non-crypto users to participate, the platform creates a powerful ecosystem that benefits all participants."
+          text: "Lakkhi Fund represents a new paradigm in Web3 fundraising by placing tokens at the center of the fundraising process while ensuring 100% of donations reach their intended recipients. By allowing projects to raise funds in their own tokens while enabling non-crypto users to participate, the platform creates a powerful ecosystem that benefits all participants."
         },
         {
           type: "paragraph",
-          text: "The combination of token customization, decentralized authentication, and gas optimization creates a secure, efficient, and user-friendly platform that addresses the unique needs of Web3 projects and token creators."
+          text: "The combination of token customization, decentralized authentication, gas optimization, and our transparent fee structure creates a secure, efficient, and user-friendly platform that addresses the unique needs of Web3 projects and token creators."
         },
         {
           type: "paragraph",
-          text: "Lakkhi Fund is not just a fundraising platform—it's a token utility booster, creating real value for projects and their communities through innovative technology and thoughtful design."
+          text: "Lakkhi Fund is not just a fundraising platform—it's a token utility booster and impact maximizer, creating real value for projects and their communities through innovative technology and thoughtful design while ensuring every donation dollar goes directly to the intended cause."
+        },
+        {
+          type: "heading",
+          text: "Contact Information"
+        },
+        {
+          type: "paragraph",
+          text: "For more information about Lakkhi Fund, please contact us at:"
+        },
+        {
+          type: "list",
+          items: [
+            "Email: info@lakkhifund.com",
+            "Twitter: @LakkhiFund",
+            "Telegram: t.me/LakkhiFund",
+            "Discord: discord.gg/lakkhifund"
+          ]
         }
       ]
     }

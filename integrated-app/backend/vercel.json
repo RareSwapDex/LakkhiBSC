@@ -8,19 +8,15 @@
   ],
   "routes": [
     {
-      "src": "/static/(.*)",
-      "dest": "/static/$1"
-    },
-    {
-      "src": "/media/(.*)",
-      "dest": "/media/$1"
-    },
-    {
       "src": "/(.*)",
       "dest": "lakkhi/wsgi.py"
     }
   ],
   "env": {
-    "DJANGO_SETTINGS_MODULE": "lakkhi.settings_prod"
+    "DJANGO_SETTINGS_MODULE": "lakkhi.settings_prod",
+    "ALLOWED_HOSTS": ".vercel.app",
+    "CORS_ALLOW_ALL_ORIGINS": "True",
+    "DATABASE_URL": "sqlite://:memory:",
+    "BSC_RPC_URL": "https://bsc-dataseed1.binance.org/"
   }
 } 

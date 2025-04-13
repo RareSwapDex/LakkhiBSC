@@ -1,0 +1,31 @@
+.contract-owner-selector {
+  transition: all 0.3s ease;
+}
+
+.contract-owner-info {
+  font-size: 0.9rem;
+  border-left: 3px solid #0dcaf0;
+  background-color: rgba(13, 202, 240, 0.1);
+}
+
+.contract-owner-selector .form-control {
+  font-family: monospace;
+}
+
+.contract-owner-selector .input-group {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-radius: 0.25rem;
+  transition: box-shadow 0.3s ease;
+}
+
+.contract-owner-selector .input-group:focus-within {
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+}
+
+.contract-owner-selector .btn {
+  transition: all 0.2s ease;
+}
+
+.contract-owner-selector .btn:hover {
+  transform: translateY(-1px);
+} 

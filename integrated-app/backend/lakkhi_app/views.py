@@ -232,10 +232,10 @@ def validate_token_address(token_address):
     try:
         token_info = get_token_info(token_address)
         return {
-                    "success": True,
+            "success": True,
             "token_info": token_info
         }
-        except Exception as e:
+    except Exception as e:
         return {
             "success": False,
             "message": str(e)
@@ -264,12 +264,12 @@ def token_price(request):
     try:
         price = get_token_price()
         return Response({
-                    "success": True,
+            "success": True,
             "price": price
         })
-        except Exception as e:
-            return Response(
-                {"success": False, "message": str(e)},
+    except Exception as e:
+        return Response(
+            {"success": False, "message": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -451,15 +451,15 @@ def payment_process(request):
                 "message": "Missing required fields: email, amount, project_id"
             })
             
-            # Get the project
-            try:
-                project = Project.objects.get(id=project_id)
+        # Get the project
+        try:
+            project = Project.objects.get(id=project_id)
             if project.status != 'active':
                 return JsonResponse({
                     "success": False, 
                     "message": "Project is not active"
                 })
-            except Project.DoesNotExist:
+        except Project.DoesNotExist:
             return JsonResponse({
                 "success": False, 
                 "message": "Project not found"
@@ -754,22 +754,78 @@ class CampaignViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        # Use the contract_owner from request data or default to the creator's wallet address
+        contract_owner = self.request.data.get('contract_owner', self.request.user.wallet_address)
+        serializer.save(owner=self.request.user, contract_owner=contract_owner)
     
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        # Add is_owner flag
         serializer = self.get_serializer(instance)
         data = serializer.data
+        
+        # Add is_owner flag
         data['is_owner'] = instance.owner == request.user
+        
+        # Add is_contract_owner flag
+        if request.user.wallet_address and instance.contract_owner:
+            data['is_contract_owner'] = request.user.wallet_address.lower() == instance.contract_owner.lower()
+        else:
+            data['is_contract_owner'] = False
+        
         return Response(data)
+    
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Check permissions - only campaign owner or contract owner can update
+        if not (instance.owner == request.user or 
+                (request.user.wallet_address and instance.contract_owner and 
+                 request.user.wallet_address.lower() == instance.contract_owner.lower())):
+            return Response(
+                {"detail": "You don't have permission to edit this campaign"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        # For non-owner, prevent modifying restricted fields
+        if instance.owner != request.user:
+            # Remove any restricted fields that cannot be changed by contract owner
+            for field in ['owner', 'token_address', 'token_name', 'token_symbol', 'contract_owner']:
+                if field in request.data:
+                    request.data.pop(field)
+        
+        return super().update(request, *args, **kwargs)
+    
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        
+        # Check permissions - only campaign owner or contract owner can update
+        if not (instance.owner == request.user or 
+                (request.user.wallet_address and instance.contract_owner and 
+                 request.user.wallet_address.lower() == instance.contract_owner.lower())):
+            return Response(
+                {"detail": "You don't have permission to edit this campaign"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        # For non-owner, prevent modifying restricted fields
+        if instance.owner != request.user:
+            # Remove any restricted fields that cannot be changed by contract owner
+            for field in ['owner', 'token_address', 'token_name', 'token_symbol', 'contract_owner']:
+                if field in request.data:
+                    request.data.pop(field)
+        
+        return super().partial_update(request, *args, **kwargs)
     
     @action(detail=True, methods=['get'])
     def analytics(self, request, pk=None):
         campaign = self.get_object()
         
-        # Check if user is the owner
-        if campaign.owner != request.user:
+        # Check if user is the owner or contract owner
+        is_owner = campaign.owner == request.user
+        is_contract_owner = (request.user.wallet_address and campaign.contract_owner and 
+                            request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
             return Response(
                 {"detail": "Only campaign owners can access analytics"}, 
                 status=status.HTTP_403_FORBIDDEN
@@ -873,21 +929,67 @@ class MilestoneViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
         
-        # Check if user is the campaign owner
-        if campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can create milestones")
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can create milestones")
             
         serializer.save(campaign=campaign)
     
     def perform_update(self, serializer):
-        if serializer.instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can update milestones")
+        campaign = serializer.instance.campaign
+        
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can update milestones")
+        
+        # If marking as completed, only contract owner can do that
+        if 'completed' in self.request.data and self.request.data['completed'] is True:
+            if not is_contract_owner:
+                raise PermissionDenied("Only contract owners can mark milestones as completed")
+                
         serializer.save()
     
     def perform_destroy(self, instance):
-        if instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can delete milestones")
+        campaign = instance.campaign
+        
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can delete milestones")
+        
         instance.delete()
+        
+    @action(detail=True, methods=['post'])
+    def complete(self, request, campaign_pk=None, pk=None):
+        milestone = self.get_object()
+        campaign = milestone.campaign
+        
+        # Only contract owner can complete milestones
+        is_contract_owner = (request.user.wallet_address and campaign.contract_owner and 
+                           request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not is_contract_owner:
+            return Response(
+                {"detail": "Only contract owners can complete milestones"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        milestone.completed = True
+        milestone.completion_date = timezone.now()
+        milestone.save()
+        
+        return Response({"status": "Milestone completed"}, status=status.HTTP_200_OK)
 
 
 class ReleaseViewSet(viewsets.ModelViewSet):
@@ -900,21 +1002,86 @@ class ReleaseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         campaign = get_object_or_404(Campaign, pk=self.kwargs['campaign_pk'])
         
-        # Check if user is the campaign owner
-        if campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can request releases")
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can request releases")
             
         serializer.save(campaign=campaign, status='pending')
     
     def perform_update(self, serializer):
-        if serializer.instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can update release requests")
+        campaign = serializer.instance.campaign
+        
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can update release requests")
+        
+        # If changing status to 'completed', only contract owner should be able to do this
+        if 'status' in self.request.data and self.request.data['status'] == 'completed':
+            if not is_contract_owner:
+                raise PermissionDenied("Only contract owners can complete fund releases")
+                
         serializer.save()
     
     def perform_destroy(self, instance):
-        if instance.campaign.owner != self.request.user:
-            raise PermissionDenied("Only campaign owners can delete release requests")
+        campaign = instance.campaign
+        
+        # Check if user is the campaign owner or contract owner
+        is_owner = campaign.owner == self.request.user
+        is_contract_owner = (self.request.user.wallet_address and campaign.contract_owner and 
+                           self.request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not (is_owner or is_contract_owner):
+            raise PermissionDenied("Only campaign owners or contract owners can delete release requests")
+        
         instance.delete()
+        
+    @action(detail=True, methods=['post'])
+    def approve(self, request, campaign_pk=None, pk=None):
+        release = self.get_object()
+        campaign = release.campaign
+        
+        # Only contract owner can approve releases
+        is_contract_owner = (request.user.wallet_address and campaign.contract_owner and 
+                           request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not is_contract_owner:
+            return Response(
+                {"detail": "Only contract owners can approve fund releases"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        release.status = 'approved'
+        release.save()
+        
+        return Response({"status": "Release approved"}, status=status.HTTP_200_OK)
+        
+    @action(detail=True, methods=['post'])
+    def reject(self, request, campaign_pk=None, pk=None):
+        release = self.get_object()
+        campaign = release.campaign
+        
+        # Only contract owner can reject releases
+        is_contract_owner = (request.user.wallet_address and campaign.contract_owner and 
+                           request.user.wallet_address.lower() == campaign.contract_owner.lower())
+        
+        if not is_contract_owner:
+            return Response(
+                {"detail": "Only contract owners can reject fund releases"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        release.status = 'rejected'
+        release.save()
+        
+        return Response({"status": "Release rejected"}, status=status.HTTP_200_OK)
 
 
 # Additional API view for exporting campaign analytics

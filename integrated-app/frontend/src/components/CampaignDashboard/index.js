@@ -118,7 +118,7 @@ const CampaignDashboard = () => {
     return (
       <Box>
         <MobileCampaignView campaign={campaignData} />
-        {campaignData.is_owner && (
+        {(campaignData.is_owner || campaignData.is_contract_owner) && (
           <Box sx={{ p: 2 }}>
             <CampaignOwnerControls
               campaign={campaignData}
@@ -159,7 +159,7 @@ const CampaignDashboard = () => {
           <CampaignStats campaign={campaignData} />
         </Grid>
 
-        {campaignData.is_owner && (
+        {(campaignData.is_owner || campaignData.is_contract_owner) && (
           <Grid item xs={12}>
             <CampaignOwnerControls 
               campaign={campaignData} 
@@ -180,7 +180,7 @@ const CampaignDashboard = () => {
             >
               <Tab label="Updates" />
               <Tab label="Comments" />
-              {campaignData.is_owner && <Tab label="Analytics" />}
+              {(campaignData.is_owner || campaignData.is_contract_owner) && <Tab label="Analytics" />}
             </Tabs>
 
             {activeTab === 0 && (
@@ -203,7 +203,7 @@ const CampaignDashboard = () => {
               />
             )}
 
-            {activeTab === 2 && campaignData.is_owner && (
+            {activeTab === 2 && (campaignData.is_owner || campaignData.is_contract_owner) && (
               <CampaignAnalytics campaign={campaignData} />
             )}
           </Paper>
