@@ -4,7 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ProviderContextProvider } from './web3/ProviderContext';
 import './App.css';
 import Navbar from './components/Navbar';
-import Footer from './components/Footer';
+import Footer from './components/Footer/index';
 import HomePage from './pages/HomePage/index';
 import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailsPage from './pages/ProjectDetailsPage';
