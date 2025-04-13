@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import './HomePage.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHoldingUsd } from '@fortawesome/free-solid-svg-icons';
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
+import './HomePage.css';
 
 const HomePage = () => {
   useEffect(() => {
@@ -20,14 +20,14 @@ const HomePage = () => {
       <section className="hero">
         <div className="hero-content">
           <h1>Fundraise in Your Own Token</h1>
-          <p>The decentralized platform that helps Web3 projects raise funds while boosting token utility and adoption.</p>
+          <p>The decentralized platform that helps Web3 projects raise funds with <span className="highlight">zero fees on donations</span>, boosting token utility and adoption.</p>
           <div className="hero-buttons">
-            <Link to="/create-campaign" className="primary-button">Create Campaign</Link>
-            <Link to="/campaigns" className="secondary-button">Explore Campaigns</Link>
+            <Link to="/admin/create-campaign" className="primary-button">Create Campaign</Link>
+            <Link to="/projects" className="secondary-button">Explore Projects</Link>
           </div>
         </div>
         <div className="hero-image">
-          <img src="/images/hero-image.png" alt="Lakkhi Fund Platform" />
+          <img src="/images/hero-banner.svg" alt="Lakkhi Fund Platform" />
         </div>
       </section>
 
@@ -44,7 +44,7 @@ const HomePage = () => {
           </div>
           <div className="whitepaper-text">
             <h2>Learn More About Lakkhi Fund</h2>
-            <p>Dive deep into our platform's architecture, token integration, and how we're revolutionizing Web3 fundraising.</p>
+            <p>Dive deep into our platform's architecture, token integration, and how we're revolutionizing Web3 fundraising with 0% fees on donations.</p>
             <Link to="/whitepaper" className="whitepaper-button">Read Our Whitepaper</Link>
           </div>
         </div>
@@ -54,6 +54,14 @@ const HomePage = () => {
       <section className="benefits">
         <h2>Why Use Lakkhi Fund for Your Token Project?</h2>
         <div className="benefits-grid">
+          <div className="benefit-card">
+            <div className="benefit-icon">
+              <FontAwesomeIcon icon={faHandHoldingUsd} />
+            </div>
+            <h3>100% of Donations Go to Projects</h3>
+            <p>Unlike other platforms, we take 0% fees from donor contributions. Every token donated goes directly to the project.</p>
+          </div>
+          
           <div className="benefit-card">
             <div className="benefit-icon">
               <FontAwesomeIcon icon={faCoins} />
@@ -77,14 +85,6 @@ const HomePage = () => {
             <h3>Positive Token Price Impact</h3>
             <p>Create buying pressure and reduce circulating supply, potentially benefiting your token's economics.</p>
           </div>
-          
-          <div className="benefit-card">
-            <div className="benefit-icon">
-              <FontAwesomeIcon icon={faRocket} />
-            </div>
-            <h3>Increase Token Utility</h3>
-            <p>Add a meaningful use case for your token while exposing it to new potential holders.</p>
-          </div>
         </div>
       </section>
 
@@ -107,17 +107,17 @@ const HomePage = () => {
           <div className="step">
             <div className="step-number">3</div>
             <h3>Receive Contributions</h3>
-            <p>Contributors can use crypto or credit card to support your project.</p>
+            <p>Contributors can use crypto or credit card to support your project with 0% platform fees.</p>
           </div>
           
           <div className="step">
             <div className="step-number">4</div>
             <h3>Manage Your Funds</h3>
-            <p>Funds are transferred directly to your wallet upon campaign completion.</p>
+            <p>100% of funds are transferred directly to your wallet upon campaign completion.</p>
           </div>
         </div>
         <div className="cta-center">
-          <Link to="/faq" className="secondary-button">Learn More in FAQ</Link>
+          <Link to="/admin/create-campaign" className="primary-button">Start Your Campaign</Link>
         </div>
       </section>
     </div>
