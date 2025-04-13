@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHoldingUsd } from '@fortawesome/free-solid-svg-icons';
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
+import TestimonialCarousel from '../../components/TestimonialCarousel';
 import './HomePage.css';
 
 const HomePage = () => {
@@ -86,6 +87,13 @@ const HomePage = () => {
             <p>Create buying pressure and reduce circulating supply, potentially benefiting your token's economics.</p>
           </div>
         </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section className="testimonials-section">
+        <h2>Success Stories</h2>
+        <p className="section-subtitle">Hear from projects that have successfully raised funds on our platform</p>
+        <TestimonialCarousel />
       </section>
 
       {/* How It Works Section */}
