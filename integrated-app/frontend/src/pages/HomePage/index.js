@@ -5,6 +5,7 @@ import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHolding
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
 import TestimonialCarousel from '../../components/TestimonialCarousel';
 import StatsCounter from '../../components/StatsCounter';
+import FeaturedCampaigns from '../../components/FeaturedCampaigns';
 import './HomePage.css';
 
 const HomePage = () => {
@@ -95,6 +96,13 @@ const HomePage = () => {
             <p>Create buying pressure and reduce circulating supply, potentially benefiting your token's economics.</p>
           </div>
         </div>
+      </section>
+      
+      {/* Featured Campaigns Section */}
+      <section className="featured-campaigns-section">
+        <h2>Featured Campaigns</h2>
+        <p className="section-subtitle">Support these innovative projects raising funds on Lakkhi Fund</p>
+        <FeaturedCampaigns />
       </section>
 
       {/* Testimonials Section */}

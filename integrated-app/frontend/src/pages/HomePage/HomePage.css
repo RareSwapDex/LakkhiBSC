@@ -459,4 +459,35 @@
 
 .platform-stats-section .section-subtitle {
   margin-bottom: 3rem;
+}
+
+/* Featured Campaigns Section */
+.featured-campaigns-section {
+  padding: 5rem 2rem;
+  text-align: center;
+  background-color: #fff;
+}
+
+.featured-campaigns-section h2 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  color: #333;
+  position: relative;
+  display: inline-block;
+}
+
+.featured-campaigns-section h2:after {
+  content: '';
+  position: absolute;
+  width: 80px;
+  height: 4px;
+  background-color: #f39c12;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+
+.featured-campaigns-section .section-subtitle {
+  margin-bottom: 3rem;
 } 
