@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import './Footer.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTwitter, faTelegram } from '@fortawesome/free-brands-svg-icons';
-import { faFileAlt, faChartLine, faDollarSign } from '@fortawesome/free-solid-svg-icons';
+import { faFileAlt, faChartLine, faDollarSign, faEnvelope } from '@fortawesome/free-solid-svg-icons';
 
 const Footer = () => {
   return (
@@ -43,11 +43,14 @@ const Footer = () => {
         <div className="footer-section">
           <h3>Connect</h3>
           <div className="social-links">
+            <a href="mailto:support@lakkhifoundation.org" className="social-link">
+              <FontAwesomeIcon icon={faEnvelope} /> support@lakkhifoundation.org
+            </a>
+            <a href="https://t.me/lakkhirhino" target="_blank" rel="noopener noreferrer" className="social-link">
+              <FontAwesomeIcon icon={faTelegram} /> @lakkhirhino
+            </a>
             <a href="https://x.com/Lakkhi_FanPage" target="_blank" rel="noopener noreferrer" className="social-link">
               <FontAwesomeIcon icon={faTwitter} /> Twitter
-            </a>
-            <a href="https://t.me/LakkhiRhino" target="_blank" rel="noopener noreferrer" className="social-link">
-              <FontAwesomeIcon icon={faTelegram} /> Telegram
             </a>
           </div>
         </div>
