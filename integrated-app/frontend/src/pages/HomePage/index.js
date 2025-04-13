@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHoldingUsd } from '@fortawesome/free-solid-svg-icons';
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
 import TestimonialCarousel from '../../components/TestimonialCarousel';
+import StatsCounter from '../../components/StatsCounter';
 import './HomePage.css';
 
 const HomePage = () => {
@@ -35,6 +36,13 @@ const HomePage = () => {
       {/* Token Price Section */}
       <section className="token-price-section">
         <TokenPriceDisplay />
+      </section>
+      
+      {/* Platform Stats Section */}
+      <section className="platform-stats-section">
+        <h2>Our Impact</h2>
+        <p className="section-subtitle">Join the growing community of projects and donors</p>
+        <StatsCounter />
       </section>
       
       {/* Whitepaper CTA Section */}
