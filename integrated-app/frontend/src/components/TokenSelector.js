@@ -273,21 +273,13 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       
       if (name && symbol) {
         // Include the detected blockchain in the token info
-        const tokenDetails = {
+        setTokenInfo({
           name: name,
           symbol: symbol,
           decimals: parseInt(decimals || '18', 10),
           address: checksumAddress,
           blockchain: detectedChain  // Add the blockchain info
-        };
-        
-        setTokenInfo(tokenDetails);
-        setValidated(true);
-        
-        // Call the onValidate callback if provided
-        if (onValidate) {
-          onValidate(tokenDetails);
-        }
+        });
       } else {
         throw new Error('Could not retrieve token information. This may not be a standard token.');
       }
@@ -295,12 +287,6 @@ const TokenSelector = ({ value, onChange, onValidate, onReset }) => {
       console.error('Token validation failed:', error);
       setError(error.message || 'Failed to validate token');
       setTokenInfo(null);
-      setValidated(false);
-      
-      // Call onValidate with null to indicate failure
-      if (onValidate) {
-        onValidate(null);
-      }
     } finally {
       setIsValidating(false);
     }

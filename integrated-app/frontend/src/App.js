@@ -23,30 +23,30 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <ProviderContextProvider>
-          <Router>
+    <Router>
             <div className="App">
-              <Navbar />
+            <Navbar />
               <main>
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/projects" element={<ProjectsPage />} />
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/projects" element={<ProjectsPage />} />
                   <Route path="/projects/:id" element={<ProjectDetailsPage />} />
                   <Route path="/campaigns/:id" element={<ProjectDetailsPage />} />
                   <Route path="/donate/:id" element={<DonateProjectPage />} />
                   <Route path="/whitepaper" element={<WhitepaperPage />} />
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                  <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
-                  <Route path="/faq" element={<FAQPage />} />
-                  <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-                  <Route path="/terms-of-service" element={<TermsOfServicePage />} />
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </main>
-              <Footer />
-            </div>
+                <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
+                <Route path="/faq" element={<FAQPage />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </main>
+            <Footer />
+          </div>
           </Router>
         </ProviderContextProvider>
-      </AuthProvider>
+        </AuthProvider>
     </ThemeProvider>
   );
 }

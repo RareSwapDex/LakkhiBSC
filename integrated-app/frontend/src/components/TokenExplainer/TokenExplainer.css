@@ -1,0 +1,191 @@
+.token-explainer {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.token-flow-diagram {
+  position: relative;
+  padding: 2rem 1rem;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+}
+
+.diagram-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.diagram-step {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  transition: all 0.3s ease;
+  position: relative;
+  cursor: pointer;
+  opacity: 0.7;
+  transform: scale(0.97);
+}
+
+.diagram-step:hover {
+  background-color: #f1f3f5;
+  transform: scale(1);
+}
+
+.diagram-step.active {
+  background-color: #fff;
+  border-left: 5px solid #f39c12;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.diagram-step.completed {
+  border-left: 5px solid #2ecc71;
+  opacity: 0.85;
+}
+
+.step-icon {
+  width: 60px;
+  height: 60px;
+  background-color: #f39c12;
+  color: white;
+  font-size: 1.8rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 1.5rem;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+  box-shadow: 0 5px 15px rgba(243, 156, 18, 0.3);
+}
+
+.diagram-step.completed .step-icon {
+  background-color: #2ecc71;
+  box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-content h3 {
+  font-size: 1.3rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.step-content p {
+  color: #666;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.connector {
+  position: absolute;
+  bottom: -24px;
+  left: 89px;
+  width: 2px;
+  height: 24px;
+  z-index: 2;
+}
+
+.connector-line {
+  width: 100%;
+  height: 100%;
+  background-color: #ddd;
+}
+
+.connector-arrow {
+  position: absolute;
+  bottom: -8px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-left: 2px solid #ddd;
+  border-bottom: 2px solid #ddd;
+  transform: rotate(-45deg);
+}
+
+.diagram-step.active .connector-line,
+.diagram-step.completed .connector-line,
+.diagram-step.active .connector-arrow,
+.diagram-step.completed .connector-arrow {
+  background-color: #f39c12;
+  border-color: #f39c12;
+}
+
+.diagram-step.completed .connector-line,
+.diagram-step.completed .connector-arrow {
+  background-color: #2ecc71;
+  border-color: #2ecc71;
+}
+
+.token-explainer-navigation {
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem;
+  gap: 0.8rem;
+}
+
+.nav-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #ddd;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.nav-indicator.active {
+  background-color: #f39c12;
+  transform: scale(1.3);
+}
+
+/* Animation for step transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.diagram-step.active .step-content {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .diagram-step {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .step-icon {
+    margin-right: 0;
+    margin-bottom: 1rem;
+  }
+  
+  .connector {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .step-content h3 {
+    font-size: 1.2rem;
+  }
+  
+  .step-content p {
+    font-size: 0.95rem;
+  }
+} 

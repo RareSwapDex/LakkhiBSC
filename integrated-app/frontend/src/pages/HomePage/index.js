@@ -5,6 +5,7 @@ import { faRocket, faCoins, faExchangeAlt, faChartLine, faFileAlt, faHandHolding
 import TokenPriceDisplay from '../../components/TokenPriceDisplay';
 import TokenExplainer from '../../components/TokenExplainer';
 import NewsletterSignup from '../../components/NewsletterSignup';
+import FAQAccordion from '../../components/FAQAccordion';
 import './HomePage.css';
 
 // Lazy loaded components
@@ -138,6 +139,11 @@ const HomePage = () => {
         <Suspense fallback={<LoadingPlaceholder />}>
           <TestimonialCarousel />
         </Suspense>
+      </section>
+      
+      {/* FAQ Section */}
+      <section className="faq-section">
+        <FAQAccordion />
       </section>
 
       {/* How It Works Section */}
