@@ -59,11 +59,11 @@ class PaymentProcessor:
         }
     
     @staticmethod
-    def get_mercuryo_checkout_url(contribution, session_id, return_url):
+    def get_mercuryo_checkout_url(contribution, session_id, return_url, blockchain='BSC'):
         """
         Get Mercuryo checkout URL using their API
-        Mercuryo will provide BNB which will be swapped for the project's token
-        Exactly matches RareFnd's implementation
+        Converts fiat to the appropriate native token based on the blockchain
+        Supports multiple blockchains (BSC, Ethereum, Base)
         """
         try:
             import random
@@ -92,14 +92,18 @@ class PaymentProcessor:
             )
             merchant_transaction_id = f"{float(contribution.amount_usd)}-{contribution.project.id}-{incentive_id}-{random_string}"
             
-            # Handle redirect URL format as RareFnd does
-            # In production, handle any URL modifications needed for callbacks
+            # Determine the correct crypto to purchase based on the blockchain
+            crypto_currency = "BNB"  # Default for BSC
+            if blockchain == "Ethereum":
+                crypto_currency = "ETH"
+            elif blockchain == "Base":
+                crypto_currency = "ETH"  # Also ETH for Base
             
-            # Build payload exactly as RareFnd does
+            # Build payload with blockchain-appropriate crypto
             payload = {
                 "type": "buy",
                 "from": "USD",
-                "to": "BNB",
+                "to": crypto_currency,
                 "amount": float(contribution.amount_usd),
                 "widget_id": mercuryo_widget_id,
                 "address": wallet.get("address"),
@@ -107,9 +111,10 @@ class PaymentProcessor:
                 "email": contribution.email,
                 "redirect_url": return_url,
                 "merchant_transaction_id": merchant_transaction_id,
+                "blockchain": blockchain  # Store blockchain info for later use
             }
             
-            # Build checkout URL exactly as RareFnd does
+            # Build checkout URL
             checkout_url = (
                 f"https://exchange.mercuryo.io/?widget_id={payload['widget_id']}"
                 f"&address={payload['address']}"
@@ -123,7 +128,7 @@ class PaymentProcessor:
                 f"&merchant_transaction_id={payload['merchant_transaction_id']}"
             )
             
-            print(f"Generated Mercuryo checkout URL for contribution {contribution.id}")
+            print(f"Generated Mercuryo checkout URL for contribution {contribution.id} on {blockchain}")
             return checkout_url
             
         except Exception as e:
@@ -134,7 +139,7 @@ class PaymentProcessor:
     def handle_mercuryo_callback(request_data):
         """
         Handle Mercuryo payment callback
-        Exactly matches RareFnd's implementation
+        Processes payments and routes to the appropriate blockchain
         """
         try:
             # Extract data from request exactly as RareFnd does
@@ -154,19 +159,28 @@ class PaymentProcessor:
                 incentive_id_str = merchant_transaction_id.split("-")[2]
                 incentive_id = int(incentive_id_str) if incentive_id_str != "0" else None
                 
-                # Extract BNB amount and wallet address exactly as RareFnd does
-                bnb_amount = data["amount"]
+                # Extract native token amount and wallet address
+                native_amount = data["amount"]
                 wallet_address = data["tx"]["address"]
                 contributor_email = data["user"]["email"]
                 
-                # Execute the staking flow - swap BNB to token, approve, and stake
+                # Get the project to determine the blockchain
+                from .models import Project
+                try:
+                    project = Project.objects.get(id=project_id)
+                    blockchain = project.chain or 'BSC'  # Default to BSC if not specified
+                except Project.DoesNotExist:
+                    blockchain = 'BSC'  # Default if project not found
+                
+                # Execute the staking flow with blockchain parameter
                 return PaymentProcessor.execute_stake_flow(
-                    bnb_amount=bnb_amount,
+                    native_amount=native_amount,
                     wallet_address=wallet_address,
                     project_id=project_id,
                     contributor_email=contributor_email,
                     usd_amount=usd_amount,
-                    incentive_id=incentive_id
+                    incentive_id=incentive_id,
+                    blockchain=blockchain
                 )
             
             # Return status for non-completed payments
@@ -177,10 +191,11 @@ class PaymentProcessor:
             return {"success": False, "message": f"Error processing Mercuryo callback: {str(e)}"}
 
     @staticmethod
-    def execute_stake_flow(bnb_amount, wallet_address, project_id, contributor_email, usd_amount, incentive_id=None):
+    def execute_stake_flow(native_amount, wallet_address, project_id, contributor_email, usd_amount, incentive_id=None, blockchain='BSC'):
         """
-        Execute the staking flow after receiving BNB from Mercuryo
-        This replaces the Venly.execute_stake function from RareFnd
+        Execute the staking flow after receiving native tokens from Mercuryo
+        Supports multiple blockchains (BSC, Ethereum, Base)
+        Uses the appropriate DEX router based on the blockchain
         """
         from django.db import transaction
         from .models import Project, Contribution, Incentive
@@ -208,21 +223,27 @@ class PaymentProcessor:
                     status='processing'
                 )
                 
-                # STEP 1: Swap BNB to the project's token
-                print(f"Swapping {bnb_amount} BNB to token {project.token_address}")
+                # Determine native token name based on blockchain
+                native_token = "BNB"
+                if blockchain == "Ethereum" or blockchain == "Base":
+                    native_token = "ETH"
+                
+                # STEP 1: Swap native token to the project's token using blockchain-specific DEX
+                print(f"Swapping {native_amount} {native_token} to token {project.token_address} on {blockchain}")
                 swap_result = WalletManager.swap_bnb_to_token(
                     wallet_identifier=wallet_address,
-                    bnb_amount=float(bnb_amount),
-                    token_address=project.token_address
+                    bnb_amount=float(native_amount),
+                    token_address=project.token_address,
+                    blockchain=blockchain
                 )
                 
                 if not swap_result['success']:
-                    print(f"Swap failed: {swap_result.get('errors')}")
+                    print(f"Swap failed on {blockchain}: {swap_result.get('errors')}")
                     contribution.status = 'failed'
                     contribution.save()
                     return {
                         "success": False,
-                        "message": f"Could not swap BNB to token: {swap_result.get('errors')}"
+                        "message": f"Could not swap {native_token} to token on {blockchain}: {swap_result.get('errors')}"
                     }
                 
                 # Update contribution with token amount and transaction hash
@@ -232,39 +253,41 @@ class PaymentProcessor:
                 contribution.save()
                 
                 # STEP 2: Approve the project's smart contract to spend tokens
-                print(f"Approving contract {project.contract_address} to spend tokens")
+                print(f"Approving contract {project.contract_address} to spend tokens on {blockchain}")
                 approval_result = WalletManager.approve_token_spending(
                     wallet_identifier=wallet_address,
                     spender_address=project.contract_address,
                     token_address=project.token_address,
-                    amount=token_amount
+                    amount=token_amount,
+                    blockchain=blockchain
                 )
                 
                 if not approval_result['success']:
-                    print(f"Approval failed: {approval_result.get('errors')}")
+                    print(f"Approval failed on {blockchain}: {approval_result.get('errors')}")
                     contribution.status = 'failed'
                     contribution.save()
                     return {
                         "success": False,
-                        "message": f"Could not approve token spending: {approval_result.get('errors')}"
+                        "message": f"Could not approve token spending on {blockchain}: {approval_result.get('errors')}"
                     }
                 
                 # STEP 3: Stake tokens on the project's smart contract
-                print(f"Staking tokens on contract {project.contract_address}")
+                print(f"Staking tokens on contract {project.contract_address} on {blockchain}")
                 staking_result = WalletManager.stake_tokens(
                     wallet_identifier=wallet_address,
                     contract_address=project.contract_address,
                     token_address=project.token_address,
-                    amount=token_amount
+                    amount=token_amount,
+                    blockchain=blockchain
                 )
                 
                 if not staking_result['success']:
-                    print(f"Staking failed: {staking_result.get('errors')}")
+                    print(f"Staking failed on {blockchain}: {staking_result.get('errors')}")
                     contribution.status = 'failed'
                     contribution.save()
                     return {
                         "success": False,
-                        "message": f"Could not stake tokens: {staking_result.get('errors')}"
+                        "message": f"Could not stake tokens on {blockchain}: {staking_result.get('errors')}"
                     }
                 
                 # Update contribution with final status
@@ -278,12 +301,12 @@ class PaymentProcessor:
                 
                 return {
                     "success": True,
-                    "message": f"Address {wallet_address} staked {bnb_amount}BNB to project id {project_id}, tx hash: {staking_result['result']['transactionHash']}"
+                    "message": f"Address {wallet_address} staked {native_amount} {native_token} to project id {project_id} on {blockchain}, tx hash: {staking_result['result']['transactionHash']}"
                 }
                 
         except Exception as e:
-            print(f"Error executing stake flow: {e}")
-            return {"success": False, "message": f"Error executing stake flow: {str(e)}"}
+            print(f"Error executing stake flow on {blockchain}: {e}")
+            return {"success": False, "message": f"Error executing stake flow on {blockchain}: {str(e)}"}
 
     @staticmethod
     def get_token_amount_for_usd(usd_amount, token_address):

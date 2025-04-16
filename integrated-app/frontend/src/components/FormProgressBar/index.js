@@ -2,7 +2,7 @@ import React from 'react';
 import { ProgressBar } from 'react-bootstrap';
 import './styles.css';
 
-const FormProgressBar = ({ steps, activeStep, completedSteps }) => {
+const FormProgressBar = ({ steps, activeStep, completedSteps, onStepClick }) => {
   // Calculate progress percentage
   const progress = Math.round((completedSteps.length / steps.length) * 100);
   
@@ -24,6 +24,11 @@ const FormProgressBar = ({ steps, activeStep, completedSteps }) => {
             <div 
               key={step.key} 
               className={`form-progress-step ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
+              onClick={() => onStepClick && onStepClick(step.key)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Go to ${step.label} section`}
+              title={`Click to navigate to the ${step.label} section`}
             >
               <div className="form-progress-indicator">
                 {isCompleted ? (

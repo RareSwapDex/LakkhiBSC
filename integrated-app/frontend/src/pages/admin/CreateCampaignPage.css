@@ -90,4 +90,51 @@
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(13, 110, 253, 0.2);
+}
+
+/* Add styles for template separator */
+.template-form-separator {
+  display: flex;
+  align-items: center;
+  margin: 30px 0;
+}
+
+.separator-line {
+  flex-grow: 1;
+  height: 1px;
+  background-color: #e0e0e0;
+}
+
+.separator-text {
+  padding: 0 20px;
+  text-align: center;
+}
+
+.separator-text h5 {
+  margin-bottom: 5px;
+  color: #333;
+}
+
+/* Selected template styling */
+.selected-template {
+  padding: 0.5rem 0;
+}
+
+.selected-template h4 {
+  font-weight: 600;
+  color: #333;
+}
+
+.selected-template .text-muted {
+  margin-bottom: 0;
+}
+
+.selected-template .btn-outline-secondary:hover {
+  background-color: #f8f9fa;
+  color: #333;
+}
+
+/* Add transition for template section */
+.campaign-templates {
+  transition: all 0.3s ease-in-out;
 } 

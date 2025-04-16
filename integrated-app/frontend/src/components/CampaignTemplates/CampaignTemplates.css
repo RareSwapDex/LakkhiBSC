@@ -1,0 +1,164 @@
+.campaign-templates {
+  padding: 1rem 0;
+}
+
+.template-grid {
+  margin-top: 1rem;
+}
+
+.template-item {
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.template-item:hover .template-card {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(243, 156, 18, 0.2);
+  border-color: #f39c12;
+}
+
+.template-card {
+  transition: all 0.3s ease;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+  position: relative;
+}
+
+/* Add selection indicator */
+.template-card::before {
+  content: 'Click to select';
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(243, 156, 18, 0.8);
+  color: white;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.template-item:hover .template-card::before {
+  opacity: 1;
+}
+
+.template-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f39c12;
+  margin-bottom: 1rem;
+  font-size: 2.2rem;
+  height: 60px;
+}
+
+.template-card .card-title {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: #333;
+  text-align: center;
+}
+
+.template-card .card-text {
+  font-size: 0.9rem;
+  flex-grow: 1;
+  color: #666;
+  text-align: center;
+}
+
+/* Style for selected template */
+.template-card[border="warning"] {
+  background-color: rgba(243, 156, 18, 0.05);
+  border-color: #f39c12 !important;
+  box-shadow: 0 5px 15px rgba(243, 156, 18, 0.15);
+}
+
+.template-card[border="warning"]::before {
+  content: 'Selected';
+  background-color: #28a745;
+  opacity: 1;
+}
+
+.template-card[border="warning"] .template-icon {
+  color: #e67e22;
+}
+
+/* Animation for selection */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.template-card[border="warning"] {
+  animation: pulse 0.5s ease;
+}
+
+.template-item .card-title {
+  font-size: 1.1rem;
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.template-item .card-text {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.template-item .btn {
+  margin-top: auto;
+}
+
+@media (max-width: 767.98px) {
+  .template-grid .col-sm-6 {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  
+  .template-item .card-title {
+    font-size: 1rem;
+  }
+  
+  .template-item .card-text {
+    font-size: 0.85rem;
+  }
+}
+
+/* More templates button styling */
+.more-templates-btn {
+  padding: 10px 20px;
+  margin: 15px 0;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.more-templates-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.more-templates-hint {
+  color: #6c757d;
+  font-size: 0.8rem;
+}
+
+/* Animation for expanding templates */
+.additional-templates {
+  animation: fadeInDown 0.4s ease-in-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+} 

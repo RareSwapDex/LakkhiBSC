@@ -23,11 +23,36 @@ except:
     LAKKHI_TOKEN_ABI = []
     LAKKHI_TOKEN_DECIMALS = 1000000000000000000  # 18 decimals
 
-# PancakeSwap Router Address (Mainnet)
-PANCAKESWAP_ROUTER_ADDRESS = "0x10ED43C718714eb63d5aA57B78B54704E256024E"
+# DEX Router Addresses for different chains
+ROUTER_ADDRESSES = {
+    # BSC - PancakeSwap Router (v2)
+    'BSC': "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+    # Ethereum - Uniswap Router (v2)
+    'Ethereum': "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+    # Base - Uniswap Router (v3)
+    'Base': "0x4752ba5DBc23F44D41617B7d2713924549e8Cc01"
+}
 
-# Wrapped BNB token address
-WBNB_ADDRESS = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+# Native Wrapped Token addresses for different chains
+WRAPPED_NATIVE_TOKEN = {
+    'BSC': "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",  # Wrapped BNB
+    'Ethereum': "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",  # Wrapped ETH
+    'Base': "0x4200000000000000000000000000000000000006"  # Wrapped ETH on Base
+}
+
+# Default Native Token Symbol
+NATIVE_TOKEN_SYMBOL = {
+    'BSC': "BNB",
+    'Ethereum': "ETH",
+    'Base': "ETH"
+}
+
+# RPC URLs for different chains
+RPC_URLS = {
+    'BSC': settings.BSC_RPC_URL,
+    'Ethereum': getattr(settings, 'ETH_RPC_URL', 'https://eth.llamarpc.com'),
+    'Base': getattr(settings, 'BASE_RPC_URL', 'https://mainnet.base.org')
+}
 
 # Load PancakeSwap Router ABI
 try:
@@ -37,13 +62,49 @@ except Exception as e:
     print(f"Error loading PancakeSwap ABI: {e}")
     PANCAKESWAP_ROUTER_ABI = []
 
-# Connect to BSC using the configured RPC URL
-w3 = Web3(Web3.HTTPProvider(settings.BSC_RPC_URL))
+# Load Uniswap Router ABI - If not available, use a simplified ABI
+UNISWAP_ROUTER_ABI = [
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "amountOutMin", "type": "uint256"},
+            {"internalType": "address[]", "name": "path", "type": "address[]"},
+            {"internalType": "address", "name": "to", "type": "address"},
+            {"internalType": "uint256", "name": "deadline", "type": "uint256"}
+        ],
+        "name": "swapExactETHForTokens",
+        "outputs": [{"internalType": "uint256[]", "name": "amounts", "type": "uint256[]"}],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+            {"internalType": "address[]", "name": "path", "type": "address[]"}
+        ],
+        "name": "getAmountsOut",
+        "outputs": [{"internalType": "uint256[]", "name": "amounts", "type": "uint256[]"}],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+# Create web3 instances for different chains (lazily initialized)
+w3_instances = {}
+
+def get_web3(blockchain='BSC'):
+    """Get Web3 instance for the specified blockchain"""
+    if blockchain not in w3_instances:
+        rpc_url = RPC_URLS.get(blockchain, RPC_URLS['BSC'])
+        w3_instances[blockchain] = Web3(Web3.HTTPProvider(rpc_url))
+    return w3_instances[blockchain]
+
+# Default to BSC for backward compatibility
+w3 = get_web3('BSC')
 
 class WalletManager:
     """
     Manages wallet creation and operations for the Lakkhi platform.
-    Replaces the Venly service with a custom implementation.
+    Supports multiple blockchains including BSC, Ethereum, and Base.
     """
     
     @staticmethod
@@ -154,10 +215,11 @@ class WalletManager:
             return False
     
     @staticmethod
-    def approve_token_spending(wallet_identifier, spender_address, amount=None, token_address=None):
+    def approve_token_spending(wallet_identifier, spender_address, amount=None, token_address=None, blockchain='BSC'):
         """
         Approve a contract to spend tokens from the wallet
         Replaces the Venly approve_smart_contract function
+        Now supports multiple blockchains
         """
         # Handle both email identifiers and wallet addresses
         wallet = None
@@ -170,6 +232,9 @@ class WalletManager:
             return {"success": False, "message": "Wallet not found"}
         
         try:
+            # Get the correct web3 instance for the blockchain
+            web3 = get_web3(blockchain)
+            
             # Get the wallet address and private key
             wallet_address = wallet["address"]
             private_key = wallet["private_key"]
@@ -196,7 +261,7 @@ class WalletManager:
                 ]
             
             # Create token contract instance
-            token_contract = w3.eth.contract(
+            token_contract = web3.eth.contract(
                 address=token_address, 
                 abi=token_abi
             )
@@ -211,19 +276,19 @@ class WalletManager:
                 amount
             ).build_transaction({
                 'from': wallet_address,
-                'nonce': w3.eth.get_transaction_count(wallet_address),
+                'nonce': web3.eth.get_transaction_count(wallet_address),
                 'gas': 300000,
-                'gasPrice': w3.eth.gas_price
+                'gasPrice': web3.eth.gas_price
             })
             
             # Sign the transaction
-            signed_txn = w3.eth.account.sign_transaction(approve_txn, private_key)
+            signed_txn = web3.eth.account.sign_transaction(approve_txn, private_key)
             
             # Send the transaction
-            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
             
             # Wait for transaction receipt
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
             
             return {
                 "success": True,
@@ -237,49 +302,88 @@ class WalletManager:
             return {"success": False, "errors": [str(e)]}
     
     @staticmethod
-    def get_swap_rates(bnb_amount):
+    def get_swap_rates(native_amount, blockchain='BSC', token_address=None):
         """
-        Get swap rates for BNB to LAKKHI token from PancakeSwap
-        Replaces the Venly get_swap_rates function
+        Get swap rates for native token to project token
+        Supports multiple blockchains and DEXes
         """
         try:
-            # Convert BNB amount to wei
-            bnb_amount_wei = w3.to_wei(bnb_amount, 'ether')
+            # Get web3 instance for the specified blockchain
+            web3 = get_web3(blockchain)
             
-            # Create PancakeSwap router contract instance
-            router_contract = w3.eth.contract(
-                address=PANCAKESWAP_ROUTER_ADDRESS,
-                abi=PANCAKESWAP_ROUTER_ABI
+            # Convert native amount to wei
+            native_amount_wei = web3.to_wei(native_amount, 'ether')
+            
+            # Get router address for the blockchain
+            router_address = ROUTER_ADDRESSES.get(blockchain, ROUTER_ADDRESSES['BSC'])
+            
+            # Get wrapped native token address
+            wrapped_native = WRAPPED_NATIVE_TOKEN.get(blockchain, WRAPPED_NATIVE_TOKEN['BSC'])
+            
+            # Determine which router ABI to use
+            router_abi = UNISWAP_ROUTER_ABI
+            if blockchain == 'BSC':
+                router_abi = PANCAKESWAP_ROUTER_ABI
+            
+            # Default to LAKKHI token if not specified
+            if not token_address:
+                token_address = LAKKHI_TOKEN_ADDRESS
+            
+            # Create router contract instance
+            router_contract = web3.eth.contract(
+                address=router_address,
+                abi=router_abi
             )
             
-            # Get the amount of LAKKHI tokens you will receive for the BNB
+            # Get the amount of tokens you will receive for the native token
             amounts_out = router_contract.functions.getAmountsOut(
-                bnb_amount_wei,
-                [WBNB_ADDRESS, LAKKHI_TOKEN_ADDRESS]
+                native_amount_wei,
+                [wrapped_native, token_address]
             ).call()
             
-            lakkhi_amount = amounts_out[1]
-            lakkhi_amount_decimal = lakkhi_amount / LAKKHI_TOKEN_DECIMALS
+            token_amount = amounts_out[1]
+            
+            # Try to get token decimals
+            token_decimals = LAKKHI_TOKEN_DECIMALS  # Default
+            try:
+                token_contract = web3.eth.contract(
+                    address=token_address,
+                    abi=[{
+                        "constant": True,
+                        "inputs": [],
+                        "name": "decimals",
+                        "outputs": [{"name": "", "type": "uint8"}],
+                        "payable": False,
+                        "stateMutability": "view",
+                        "type": "function"
+                    }]
+                )
+                decimals = token_contract.functions.decimals().call()
+                token_decimals = 10 ** decimals
+            except Exception as e:
+                print(f"Error getting token decimals: {e}")
+            
+            token_amount_decimal = token_amount / token_decimals
             
             return {
                 "success": True,
                 "result": {
                     "bestRate": {
-                        "outputAmount": lakkhi_amount_decimal
+                        "outputAmount": token_amount_decimal
                     },
                     "fromToken": {
-                        "symbol": "BNB",
-                        "address": WBNB_ADDRESS,
+                        "symbol": NATIVE_TOKEN_SYMBOL.get(blockchain, "BNB"),
+                        "address": wrapped_native,
                         "decimals": 18
                     },
                     "toToken": {
-                        "symbol": "LAKKHI",
-                        "address": LAKKHI_TOKEN_ADDRESS,
+                        "symbol": "TOKEN",  # Generic token symbol
+                        "address": token_address,
                         "decimals": 18
                     },
-                "inputAmount": bnb_amount,
-                "outputAmount": lakkhi_amount_decimal,
-                    "exchangeRate": lakkhi_amount_decimal / float(bnb_amount) if float(bnb_amount) > 0 else 0
+                    "inputAmount": native_amount,
+                    "outputAmount": token_amount_decimal,
+                    "exchangeRate": token_amount_decimal / float(native_amount) if float(native_amount) > 0 else 0
                 }
             }
         except Exception as e:
@@ -287,10 +391,11 @@ class WalletManager:
             return {"success": False, "errors": [str(e)]}
     
     @staticmethod
-    def swap_bnb_to_token(wallet_identifier, bnb_amount, token_address=None):
+    def swap_bnb_to_token(wallet_identifier, bnb_amount, token_address=None, blockchain='BSC'):
         """
-        Swap BNB to LAKKHI token
-        Replaces the Venly swap tokens function
+        Swap native token to project token using the appropriate DEX
+        Now supports multiple blockchains (BSC, Ethereum, Base)
+        The function name is kept as swap_bnb_to_token for backward compatibility
         """
         # Handle both email identifiers and wallet addresses
         wallet = None
@@ -302,6 +407,9 @@ class WalletManager:
         if not wallet:
             return {"success": False, "errors": ["Wallet not found"]}
         
+        # Get the correct web3 instance for the blockchain
+        web3 = get_web3(blockchain)
+        
         # Use provided token address or default to LAKKHI token
         if not token_address:
             token_address = LAKKHI_TOKEN_ADDRESS
@@ -311,47 +419,58 @@ class WalletManager:
             wallet_address = wallet["address"]
             private_key = wallet["private_key"]
             
-            # Convert BNB amount to wei
-            bnb_amount_wei = w3.to_wei(bnb_amount, 'ether')
+            # Convert native amount to wei
+            native_amount_wei = web3.to_wei(bnb_amount, 'ether')
             
-            # Create PancakeSwap router contract instance
-            router_contract = w3.eth.contract(
-                address=PANCAKESWAP_ROUTER_ADDRESS,
-                abi=PANCAKESWAP_ROUTER_ABI
+            # Get router address for the blockchain
+            router_address = ROUTER_ADDRESSES.get(blockchain, ROUTER_ADDRESSES['BSC'])
+            
+            # Get wrapped native token address
+            wrapped_native = WRAPPED_NATIVE_TOKEN.get(blockchain, WRAPPED_NATIVE_TOKEN['BSC'])
+            
+            # Determine which router ABI to use
+            router_abi = UNISWAP_ROUTER_ABI
+            if blockchain == 'BSC':
+                router_abi = PANCAKESWAP_ROUTER_ABI
+            
+            # Create DEX router contract instance
+            router_contract = web3.eth.contract(
+                address=router_address,
+                abi=router_abi
             )
             
             # Get the expected output amount
             amounts_out = router_contract.functions.getAmountsOut(
-                bnb_amount_wei,
-                [WBNB_ADDRESS, token_address]
+                native_amount_wei,
+                [wrapped_native, token_address]
             ).call()
             
             # Apply 1% slippage tolerance
             min_tokens = int(amounts_out[1] * 0.99)
             
             # Set deadline to 20 minutes from now
-            deadline = w3.eth.get_block('latest')['timestamp'] + 1200
+            deadline = web3.eth.get_block('latest')['timestamp'] + 1200
             
             # Build the swap transaction
             swap_txn = router_contract.functions.swapExactETHForTokens(
                 min_tokens,
-                [WBNB_ADDRESS, token_address],
+                [wrapped_native, token_address],
                 wallet_address,
                 deadline
             ).build_transaction({
                 'from': wallet_address,
-                'value': bnb_amount_wei,
+                'value': native_amount_wei,
                 'gas': 300000,
-                'gasPrice': w3.eth.gas_price,
-                'nonce': w3.eth.get_transaction_count(wallet_address),
+                'gasPrice': web3.eth.gas_price,
+                'nonce': web3.eth.get_transaction_count(wallet_address),
             })
             
             # Sign and send the transaction
-            signed_txn = w3.eth.account.sign_transaction(swap_txn, private_key)
-            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            signed_txn = web3.eth.account.sign_transaction(swap_txn, private_key)
+            tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
             
             # Wait for the transaction receipt
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
             
             # Get the token decimals - for non-LAKKHI tokens we need to query the contract
             if token_address != LAKKHI_TOKEN_ADDRESS:
@@ -367,7 +486,7 @@ class WalletManager:
                         "type": "function"
                     }
                 ]
-                token_contract = w3.eth.contract(address=token_address, abi=erc20_abi)
+                token_contract = web3.eth.contract(address=token_address, abi=erc20_abi)
                 try:
                     token_decimals = 10 ** token_contract.functions.decimals().call()
                 except Exception as e:
@@ -376,24 +495,27 @@ class WalletManager:
             else:
                 token_decimals = LAKKHI_TOKEN_DECIMALS
             
+            # Return information about the swap including native token name
             return {
                 "success": True,
                 "result": {
                     "transactionHash": tx_hash.hex(),
                     "status": "SUCCESS" if receipt["status"] == 1 else "FAILED",
                     "fromAmount": bnb_amount,
-                    "toAmount": amounts_out[1] / token_decimals
+                    "fromToken": NATIVE_TOKEN_SYMBOL.get(blockchain, "BNB"),
+                    "toAmount": amounts_out[1] / token_decimals,
+                    "blockchain": blockchain
                 }
             }
         except Exception as e:
-            print(f"Error swapping BNB to token: {e}")
+            print(f"Error swapping native token to token on {blockchain}: {e}")
             return {"success": False, "errors": [str(e)]}
 
     @staticmethod
-    def stake_tokens(wallet_identifier, contract_address, token_address, amount):
+    def stake_tokens(wallet_identifier, contract_address, token_address, amount, blockchain='BSC'):
         """
         Stake tokens on a project's contract
-        Emulates the Venly staking functionality
+        Now supports multiple blockchains
         """
         # Load the staking contract ABI
         try:
@@ -402,6 +524,9 @@ class WalletManager:
         except Exception as e:
             print(f"Error loading staking ABI: {e}")
             return {"success": False, "errors": [f"Error loading staking ABI: {e}"]}
+        
+        # Get web3 instance for the specified blockchain
+        web3 = get_web3(blockchain)
         
         # Handle both email identifiers and wallet addresses
         wallet = None
@@ -419,7 +544,7 @@ class WalletManager:
             private_key = wallet["private_key"]
             
             # Create staking contract instance
-            staking_contract = w3.eth.contract(
+            staking_contract = web3.eth.contract(
                 address=contract_address, 
                 abi=staking_abi
             )
@@ -430,30 +555,31 @@ class WalletManager:
                 amount
             ).build_transaction({
                 'from': wallet_address,
-                'nonce': w3.eth.get_transaction_count(wallet_address),
+                'nonce': web3.eth.get_transaction_count(wallet_address),
                 'gas': 500000,
-                'gasPrice': w3.eth.gas_price
+                'gasPrice': web3.eth.gas_price
             })
             
             # Sign the transaction
-            signed_txn = w3.eth.account.sign_transaction(stake_txn, private_key)
+            signed_txn = web3.eth.account.sign_transaction(stake_txn, private_key)
             
             # Send the transaction
-            tx_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+            tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
             
             # Wait for transaction receipt
-            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
             
             return {
                 "success": True,
                 "result": {
                     "transactionHash": tx_hash.hex(),
                     "status": "SUCCESS" if receipt["status"] == 1 else "FAILED",
-                    "amount": amount
+                    "amount": amount,
+                    "blockchain": blockchain
                 }
             }
         except Exception as e:
-            print(f"Error staking tokens: {e}")
+            print(f"Error staking tokens on {blockchain}: {e}")
             return {"success": False, "errors": [str(e)]}
 
 # Create a singleton instance

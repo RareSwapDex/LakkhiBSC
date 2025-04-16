@@ -14,6 +14,16 @@
   align-items: center;
   position: relative;
   flex: 1;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.form-progress-step:hover {
+  transform: translateY(-3px);
+}
+
+.form-progress-step:hover .form-progress-indicator {
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
 }
 
 .form-progress-step:not(:last-child):after {
@@ -43,6 +53,7 @@
   font-weight: bold;
   z-index: 2;
   position: relative;
+  transition: all 0.2s ease;
 }
 
 .form-progress-step.active .form-progress-indicator {
@@ -68,6 +79,12 @@
   font-size: 12px;
   text-align: center;
   color: #6c757d;
+  transition: color 0.2s ease;
+}
+
+.form-progress-step:hover .form-progress-label {
+  color: var(--bs-primary);
+  font-weight: 500;
 }
 
 .form-progress-step.active .form-progress-label {
