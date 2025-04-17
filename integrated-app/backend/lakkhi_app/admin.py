@@ -130,6 +130,7 @@ class CampaignAdmin(admin.ModelAdmin):
     list_filter = ('status', 'created_at')
     search_fields = ('title', 'description', 'owner__username')
     readonly_fields = ('created_at', 'updated_at', 'contract_address')
+    actions = ['approve_campaigns']
     
     def contract_owner_display(self, obj):
         if obj.contract_owner:

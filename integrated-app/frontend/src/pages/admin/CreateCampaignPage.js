@@ -645,21 +645,13 @@ const CreateCampaignPage = () => {
   // Function to actually submit the form after confirmation
   const submitConfirmed = async () => {
     setSubmitting(true);
-    setError('Deploying smart contract. Please confirm the transaction in MetaMask when prompted...');
+    setError('Creating your campaign. Please wait...');
     
     try {
-      // Step 1: Deploy the smart contract through MetaMask
-      const contractData = await deploySmartContract();
-      if (!contractData) {
-        setError('Smart contract deployment failed. Please try again.');
-        setSubmitting(false);
-        setShowConfirmModal(false);
-        return;
-      }
+      // No longer deploy the smart contract here
+      // Instead, just create the campaign record in the database
       
-      setError('Smart contract deployed successfully! Creating campaign record...');
-      
-      // Step 2: Create FormData for backend submission
+      // Create FormData for backend submission
       const formDataToSend = new FormData();
       
       // Ensure the wallet address is set to the connected wallet
@@ -716,17 +708,14 @@ const CreateCampaignPage = () => {
         formDataToSend.append('rewards.projectRewards', JSON.stringify([]));
       }
       
-      // Always create contract immediately
-      formDataToSend.append('create_contract', 'true');
+      // Set status to draft - contract will be deployed after admin approval
+      formDataToSend.append('status', 'draft');
       
-      // Set publish state based on immediate activation
+      // Set publish state based on immediate activation (after approval)
       formDataToSend.append('publish', formDataWithWallet.basics.activateImmediately ? 'true' : 'false');
       
-      // Add contract data
-      formDataToSend.append('contract_data', JSON.stringify(contractData));
-      
-      // Step 3: Send data to the backend
-      console.log('Sending campaign data to backend with contract info:', contractData);
+      // Send data to the backend
+      console.log('Sending campaign data to backend');
       
       try {
       // Make API call to create campaign
@@ -739,201 +728,29 @@ const CreateCampaignPage = () => {
       // Handle successful response
       console.log('Campaign created:', createResponse.data);
         
-        // Clear form from localStorage
-        clearPersistedForm();
+      // Clear form from localStorage
+      clearPersistedForm();
       
       setSubmitSuccess(true);
-        setShowConfirmModal(false);
+      setShowConfirmModal(false);
+      
+      setError('Your campaign has been submitted for approval. You will be notified once it is approved by an admin.');
         
-        setTimeout(() => {
+      setTimeout(() => {
         // Navigate to the new campaign page
         navigate(`/campaigns/${createResponse.data.campaign_id}`);
       }, 2000);
       } catch (apiError) {
         console.error('Error creating campaign record:', apiError);
-        // The contract was deployed but the backend record creation failed
-        setError(`Smart contract was deployed successfully, but there was an error creating the campaign record: 
-          ${apiError.response?.data?.message || apiError.message || 'Unknown error'}. 
-          Please contact support with your transaction hash: ${contractData.transactionHash}`);
+        setError(`Error creating campaign: ${apiError.response?.data?.message || apiError.message || 'Unknown error'}`);
         setSubmitting(false);
         setShowConfirmModal(false);
       }
     } catch (error) {
-      console.error('Error in contract deployment:', error);
+      console.error('Error in campaign submission:', error);
       setError(`Error creating campaign: ${error.message || 'Unknown error'}`);
       setSubmitting(false);
       setShowConfirmModal(false);
-    }
-  };
-  
-  const deploySmartContract = async () => {
-    try {
-      if (!account) {
-        setError('Wallet not connected. Please connect your wallet first.');
-        return null;
-      }
-      
-      // Get the blockchain from the form data
-      const selectedBlockchain = formData.basics.blockchainChain || 'BSC';
-      
-      // Get the factory address for the selected blockchain
-      const FACTORY_ADDRESS = FACTORY_ADDRESSES[selectedBlockchain];
-      if (!FACTORY_ADDRESS) {
-        setError(`Factory contract not available for ${selectedBlockchain} network. Please select a different network.`);
-        return null;
-      }
-      
-      // Get the contract owner address from form data or use connected wallet
-      const contractOwner = formData.basics.contractOwnerAddress || account;
-      
-      // Inform user about the transaction
-      setError(`Please confirm the transaction in your wallet to deploy the campaign on ${selectedBlockchain}...`);
-      
-      // Ensure we have access to window.ethereum (MetaMask)
-      if (!window.ethereum) {
-        setError('MetaMask not detected! Please install MetaMask and refresh the page.');
-        return null;
-      }
-      
-      // Initialize Web3 directly with window.ethereum
-      const web3 = new Web3(window.ethereum);
-      
-      // Updated Campaign factory ABI with new parameters
-      const factoryABI = [
-        {
-          "inputs": [
-            {"name": "name", "type": "string"},
-            {"name": "tokenAddress", "type": "address"},
-            {"name": "beneficiary", "type": "address"},
-            {"name": "targetAmount", "type": "uint256"},
-            {"name": "minContribution", "type": "uint256"},
-            {"name": "maxContribution", "type": "uint256"},
-            {"name": "durationInDays", "type": "uint256"},
-            {"name": "milestones", "type": "tuple[]", "components": [
-              {"name": "title", "type": "string"},
-              {"name": "description", "type": "string"},
-              {"name": "amount", "type": "uint256"},
-              {"name": "releaseTime", "type": "uint256"}
-            ]},
-            {"name": "enableAutoRefund", "type": "bool"}
-          ],
-          "name": "createCampaign",
-          "outputs": [{"name": "campaignAddress", "type": "address"}],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        }
-      ];
-      
-      // Create contract instance
-      const factoryContract = new web3.eth.Contract(factoryABI, FACTORY_ADDRESS);
-      
-      // Calculate duration in days
-      const durationInDays = parseInt(formData.basics.projectDeadlineDate) || 30;
-      
-      // Convert fund amount to wei
-      const fundAmountInWei = web3.utils.toWei(formData.basics.projectFundAmount.toString(), 'ether');
-      
-      // Convert min contribution to wei (default to 0.01 ETH if not set)
-      const minContributionInWei = web3.utils.toWei(
-        formData.basics.minContribution || '0.01', 
-        'ether'
-      );
-      
-      // Convert max contribution to wei (or set to max uint256 if not specified)
-      const maxContributionInWei = formData.basics.maxContribution 
-        ? web3.utils.toWei(formData.basics.maxContribution, 'ether')
-        : '115792089237316195423570985008687907853269984665640564039457584007913129639935'; // max uint256
-      
-      // Format milestones for the contract
-      const formattedMilestones = formData.milestones.map(milestone => {
-        // Calculate timestamp for due date or use campaign end date if not specified
-        let releaseTime;
-        if (milestone.dueDate) {
-          releaseTime = Math.floor(new Date(milestone.dueDate).getTime() / 1000);
-        } else {
-          // If no specific due date, use campaign end date (now + duration)
-          const campaignEndDate = new Date();
-          campaignEndDate.setDate(campaignEndDate.getDate() + durationInDays);
-          releaseTime = Math.floor(campaignEndDate.getTime() / 1000);
-        }
-        
-        return {
-          title: milestone.title,
-          description: milestone.description,
-          amount: web3.utils.toWei(milestone.targetAmount.toString(), 'ether'),
-          releaseTime: releaseTime
-        };
-      });
-      
-      console.log('Deploying contract with params:', {
-        name: formData.basics.projectTitle,
-        tokenAddress: formData.basics.tokenAddress,
-        beneficiary: contractOwner, // Use contract owner address
-        targetAmount: fundAmountInWei,
-        minContribution: minContributionInWei,
-        maxContribution: maxContributionInWei,
-        durationInDays: durationInDays,
-        milestones: formattedMilestones,
-        enableAutoRefund: formData.basics.enableAutoRefund
-      });
-      
-      // THIS IS THE DIRECT METAMASK REQUEST - Triggers MetaMask popup
-      const txHash = await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [{
-          from: account,
-          to: FACTORY_ADDRESS,
-          data: factoryContract.methods.createCampaign(
-            formData.basics.projectTitle,
-            formData.basics.tokenAddress,
-            contractOwner, // Use contract owner address
-            fundAmountInWei,
-            minContributionInWei,
-            maxContributionInWei,
-            durationInDays,
-            formattedMilestones,
-            formData.basics.enableAutoRefund
-          ).encodeABI()
-        }]
-      });
-      
-      console.log('Transaction submitted with hash:', txHash);
-      
-      // Wait for transaction receipt
-      const waitForReceipt = async (hash, attempts = 30) => {
-        if (attempts <= 0) throw new Error('Transaction receipt not found after maximum attempts');
-        
-        const receipt = await web3.eth.getTransactionReceipt(hash);
-        if (receipt) return receipt;
-        
-        // Wait 2 seconds before trying again
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return waitForReceipt(hash, attempts - 1);
-      };
-      
-      setError('Transaction submitted! Waiting for confirmation...');
-      const receipt = await waitForReceipt(txHash);
-      console.log('Transaction confirmed! Receipt:', receipt);
-      
-      // For development purposes - in production, you'd parse the contract address from event logs
-      // Here we're using a mock address based on the transaction hash
-      const campaignAddress = `0x${receipt.blockNumber.toString(16)}000000000000000000000000`;
-      
-      // Get the explorer URL for the selected blockchain
-      const explorerUrl = EXPLORER_URLS[selectedBlockchain];
-      
-      // Return contract data
-      return {
-        contract_address: campaignAddress,
-        transaction_hash: txHash,
-        block_number: receipt.blockNumber,
-        chain: selectedBlockchain,
-        contract_url: `${explorerUrl}/address/${campaignAddress}`
-      };
-    } catch (error) {
-      console.error('Error deploying contract:', error);
-      setError(`Error deploying contract: ${error.message || 'Unknown error'}`);
-      return null;
     }
   };
   
