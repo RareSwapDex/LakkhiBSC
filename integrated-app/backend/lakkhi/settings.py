@@ -146,9 +146,6 @@ ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS', '')
 LAKKHI_TOKEN = os.environ.get('LAKKHI_TOKEN', '0x264387ad73d19408e34b5d5e13a93174a35cea33')  # Default to RareFnd for testing
 TOKEN_ADDRESS = LAKKHI_TOKEN  # Set to LAKKHI_TOKEN for production
 
-# PancakeSwap Factory Settings
-STAKING_FACTORY_ADDRESS = os.environ.get('STAKING_FACTORY_ADDRESS', '0x10ED43C718714eb63d5aA57B78B54704E256024E')  # PancakeSwap Router
-
 # Client settings for compatibility
 CLIENT_ID = "TheRareAntiquities-capsule"
 CLIENT_SECRET = "0d6aa5fe-97ea-40f9-b839-276240448758"

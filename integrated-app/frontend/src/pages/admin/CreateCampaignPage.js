@@ -20,13 +20,6 @@ import { FaEthereum } from 'react-icons/fa';
 import { SiBinance } from 'react-icons/si';
 import { BsCoin } from 'react-icons/bs';
 
-// Add these constants for factory contract addresses after imports and before the component
-const FACTORY_ADDRESSES = {
-  Ethereum: '0x9ec02756a559700d8d9e79ece56809f7bcf3dc27', // ETH mainnet factory address
-  BSC: '0x9ec02756a559700d8d9e79ece56809f7bcc5dc27',     // BSC mainnet factory address
-  Base: '0x9ec02756a559700d8d9e79ece56809f7bcd2dc27'     // Base mainnet factory address
-};
-
 const EXPLORER_URLS = {
   Ethereum: 'https://etherscan.io',
   BSC: 'https://bscscan.com',
@@ -645,13 +638,21 @@ const CreateCampaignPage = () => {
   // Function to actually submit the form after confirmation
   const submitConfirmed = async () => {
     setSubmitting(true);
-    setError('Creating your campaign. Please wait...');
+    setError('Deploying smart contract. Please confirm the transaction in MetaMask when prompted...');
     
     try {
-      // No longer deploy the smart contract here
-      // Instead, just create the campaign record in the database
+      // Step 1: Deploy the smart contract through MetaMask
+      const contractData = await deploySmartContract();
+      if (!contractData) {
+        setError('Smart contract deployment failed. Please try again.');
+        setSubmitting(false);
+        setShowConfirmModal(false);
+        return;
+      }
       
-      // Create FormData for backend submission
+      setError('Smart contract deployed successfully! Creating campaign record...');
+      
+      // Step 2: Create FormData for backend submission
       const formDataToSend = new FormData();
       
       // Ensure the wallet address is set to the connected wallet
@@ -708,14 +709,14 @@ const CreateCampaignPage = () => {
         formDataToSend.append('rewards.projectRewards', JSON.stringify([]));
       }
       
-      // Set status to draft - contract will be deployed after admin approval
-      formDataToSend.append('status', 'draft');
+      // Set status to active - no more admin approval needed
+      formDataToSend.append('status', 'active');
       
-      // Set publish state based on immediate activation (after approval)
-      formDataToSend.append('publish', formDataWithWallet.basics.activateImmediately ? 'true' : 'false');
+      // Add contract data
+      formDataToSend.append('contract_data', JSON.stringify(contractData));
       
-      // Send data to the backend
-      console.log('Sending campaign data to backend');
+      // Step 3: Send data to the backend
+      console.log('Sending campaign data to backend with contract info:', contractData);
       
       try {
       // Make API call to create campaign
@@ -734,23 +735,206 @@ const CreateCampaignPage = () => {
       setSubmitSuccess(true);
       setShowConfirmModal(false);
       
-      setError('Your campaign has been submitted for approval. You will be notified once it is approved by an admin.');
+      setError('Your campaign has been created successfully and is now live!');
         
-      setTimeout(() => {
+        setTimeout(() => {
         // Navigate to the new campaign page
         navigate(`/campaigns/${createResponse.data.campaign_id}`);
       }, 2000);
       } catch (apiError) {
         console.error('Error creating campaign record:', apiError);
-        setError(`Error creating campaign: ${apiError.response?.data?.message || apiError.message || 'Unknown error'}`);
+        // The contract was deployed but the backend record creation failed
+        setError(`Smart contract was deployed successfully, but there was an error creating the campaign record: 
+          ${apiError.response?.data?.message || apiError.message || 'Unknown error'}. 
+          Please contact support with your transaction hash: ${contractData.transactionHash}`);
         setSubmitting(false);
         setShowConfirmModal(false);
       }
     } catch (error) {
-      console.error('Error in campaign submission:', error);
+      console.error('Error in contract deployment:', error);
       setError(`Error creating campaign: ${error.message || 'Unknown error'}`);
       setSubmitting(false);
       setShowConfirmModal(false);
+    }
+  };
+  
+  const deploySmartContract = async () => {
+    try {
+      if (!account) {
+        setError('Wallet not connected. Please connect your wallet first.');
+        return null;
+      }
+      
+      // Get the blockchain from the form data
+      const selectedBlockchain = formData.basics.blockchainChain || 'BSC';
+      
+      // Get the contract owner address from form data or use connected wallet
+      const contractOwner = formData.basics.contractOwnerAddress || account;
+      
+      // Inform user about the transaction
+      setError(`Please confirm the transaction in your wallet to deploy the campaign on ${selectedBlockchain}...`);
+      
+      // Ensure we have access to window.ethereum (MetaMask)
+      if (!window.ethereum) {
+        setError('MetaMask not detected! Please install MetaMask and refresh the page.');
+        return null;
+      }
+      
+      // Initialize Web3 directly with window.ethereum
+      const web3 = new Web3(window.ethereum);
+      
+      // Get the bytecode and ABI from backend API
+      const contractConfigResponse = await axios.get(
+        `${process.env.REACT_APP_BASE_URL}/api/contract-config/`,
+        { 
+          params: { blockchain: selectedBlockchain },
+          headers: { 'Accept': 'application/json' }
+        }
+      );
+      
+      if (!contractConfigResponse.data.success) {
+        throw new Error('Failed to get contract configuration from backend');
+      }
+      
+      const { abi: stakingABI, bytecode } = contractConfigResponse.data;
+      
+      if (!bytecode || !bytecode.startsWith('0x')) {
+        throw new Error('Invalid bytecode received from backend');
+      }
+      
+      console.log('Received contract configuration from backend');
+      
+      // Create contract instance for deployment
+      const stakingContract = new web3.eth.Contract(stakingABI);
+      
+      // Calculate duration in days
+      const durationInDays = parseInt(formData.basics.projectDeadlineDate) || 30;
+      
+      // Convert fund amount to wei
+      const fundAmountInWei = web3.utils.toWei(formData.basics.projectFundAmount.toString(), 'ether');
+      
+      // Convert min contribution to wei (default to 0.01 ETH if not set)
+      const minContributionInWei = web3.utils.toWei(
+        formData.basics.minContribution || '0.01', 
+        'ether'
+      );
+      
+      // Convert max contribution to wei (or set to max uint256 if not specified)
+      const maxContributionInWei = formData.basics.maxContribution 
+        ? web3.utils.toWei(formData.basics.maxContribution, 'ether')
+        : '115792089237316195423570985008687907853269984665640564039457584007913129639935'; // max uint256
+      
+      // Format milestones for the contract
+      const formattedMilestones = formData.milestones.map(milestone => {
+        // Calculate timestamp for due date or use campaign end date if not specified
+        let releaseTime;
+        if (milestone.dueDate) {
+          releaseTime = Math.floor(new Date(milestone.dueDate).getTime() / 1000);
+        } else {
+          // If no specific due date, use campaign end date (now + duration)
+          const campaignEndDate = new Date();
+          campaignEndDate.setDate(campaignEndDate.getDate() + durationInDays);
+          releaseTime = Math.floor(campaignEndDate.getTime() / 1000);
+        }
+        
+        return {
+          title: milestone.title,
+          description: milestone.description,
+          amount: web3.utils.toWei(milestone.targetAmount.toString(), 'ether'),
+          releaseTime: releaseTime
+        };
+      });
+      
+      console.log('Deploying contract with params:', {
+        name: formData.basics.projectTitle,
+        tokenAddress: formData.basics.tokenAddress,
+        beneficiary: contractOwner, // Use contract owner address
+        targetAmount: fundAmountInWei,
+        minContribution: minContributionInWei,
+        maxContribution: maxContributionInWei,
+        durationInDays: durationInDays,
+        milestones: formattedMilestones,
+        enableAutoRefund: formData.basics.enableAutoRefund
+      });
+      
+      // Get the deployment transaction data
+      const deploymentData = stakingContract.deploy({
+        data: bytecode,
+        arguments: [
+            formData.basics.projectTitle,
+            formData.basics.tokenAddress,
+          contractOwner,
+            fundAmountInWei,
+            minContributionInWei,
+            maxContributionInWei,
+            durationInDays,
+            formattedMilestones,
+            formData.basics.enableAutoRefund
+        ]
+      }).encodeABI();
+      
+      // Send transaction to deploy
+      const deployTxHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: account,
+          gas: web3.utils.toHex(5000000), // Adjust gas as needed
+          data: deploymentData
+        }]
+      });
+      
+      console.log('Deployment transaction submitted:', deployTxHash);
+      setError('Transaction submitted! Waiting for confirmation...');
+      
+      // Wait for receipt
+      const waitForReceipt = async (hash, attempts = 30) => {
+        if (attempts <= 0) throw new Error('Transaction receipt not found after maximum attempts');
+        
+        const receipt = await web3.eth.getTransactionReceipt(hash);
+        if (receipt) return receipt;
+        
+        // Wait 2 seconds before trying again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return waitForReceipt(hash, attempts - 1);
+      };
+      
+      const receipt = await waitForReceipt(deployTxHash);
+      console.log('Deployment confirmed! Receipt:', receipt);
+      
+      // Get the contract address from the receipt
+      const contractAddress = receipt.contractAddress;
+      if (!contractAddress) {
+        throw new Error('Contract address not found in transaction receipt');
+      }
+      
+      // Get the explorer URL for the selected blockchain
+      let explorerUrl;
+      switch (selectedBlockchain) {
+        case 'Ethereum':
+          explorerUrl = 'https://etherscan.io';
+          break;
+        case 'BSC':
+          explorerUrl = 'https://bscscan.com';
+          break;
+        case 'Base':
+          explorerUrl = 'https://basescan.org';
+          break;
+        default:
+          explorerUrl = 'https://bscscan.com';
+      }
+      
+      // Return contract data
+      return {
+        contract_address: contractAddress,
+        transaction_hash: deployTxHash,
+        block_number: receipt.blockNumber,
+        chain: selectedBlockchain,
+        contract_url: `${explorerUrl}/address/${contractAddress}`
+      };
+    } catch (error) {
+      console.error('Error deploying contract:', error);
+      setError(`Error deploying contract: ${error.message || 'Unknown error'}`);
+      return null;
     }
   };
   
@@ -1810,7 +1994,7 @@ const CreateCampaignPage = () => {
   
   // Milestone tab content
   const renderMilestonesTab = () => {
-    return (
+  return (
       <div className="tab-content">
         <h3>Project Milestones</h3>
         <p className="text-muted mb-4">
@@ -1996,7 +2180,7 @@ const CreateCampaignPage = () => {
             Lakkhi Fund uses a fully decentralized approach to campaign management. When you create a campaign:
             <ul className="mt-2">
               <li>Your wallet address becomes the campaign creator in our records</li>
-              <li>A real smart contract is deployed on-chain using the PancakeSwap factory</li>
+              <li>A real smart contract is deployed directly on-chain</li>
               <li>You can designate a different wallet address as the "Contract Owner" who will receive the funds</li>
               <li>Only the contract owner wallet can withdraw or manage campaign funds</li>
               <li>Ownership cannot be transferred later, so ensure you have access to the contract owner wallet</li>
@@ -2041,92 +2225,92 @@ const CreateCampaignPage = () => {
       >
         {/* Only show Basics and Preview tab titles in the tab bar */}
         <Tab eventKey="basics" title="Basics">
-          <Card className="mb-3">
-            <Card.Body>
+        <Card className="mb-3">
+          <Card.Body>
               <Form>
                 <FormField
                   label="Campaign Title"
-                  type="text"
-                  value={formData.basics.projectTitle}
-                  onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
-                  required
-                  placeholder="Enter a clear, descriptive title"
+                type="text"
+                value={formData.basics.projectTitle}
+                onChange={(e) => handleInputChange('basics', 'projectTitle', e.target.value)}
+                required
+                placeholder="Enter a clear, descriptive title"
                   error={fieldErrors['basics.projectTitle']}
                   validate={(val) => val && val.trim().length > 0}
                   errorMessage="Campaign title is required"
-                />
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Category*</Form.Label>
-                  <Form.Select
-                    value={formData.basics.category}
-                    onChange={(e) => handleInputChange('basics', 'category', e.target.value)}
-                    required
+              />
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Category*</Form.Label>
+                <Form.Select
+                  value={formData.basics.category}
+                  onChange={(e) => handleInputChange('basics', 'category', e.target.value)}
+                  required
                     className={fieldErrors['basics.category'] ? 'is-invalid' : ''}
-                  >
+                >
                     <option value="">Select a category</option>
-                    {campaignCategories.map(category => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </Form.Select>
+                  {campaignCategories.map(category => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Form.Select>
                   {fieldErrors['basics.category'] && (
                     <Form.Control.Feedback type="invalid">
                       {fieldErrors['basics.category']}
                     </Form.Control.Feedback>
                   )}
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Tags</Form.Label>
-                  <InputGroup>
-                    <Form.Control
-                      type="text"
-                      placeholder="Enter a tag and press Add"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddTag();
-                        }
-                      }}
-                    />
-                    <Button variant="outline-secondary" onClick={handleAddTag}>
-                      Add
-                    </Button>
-                  </InputGroup>
-                  <div className="mt-2">
-                    {formData.basics.tags.map((tag, index) => (
-                      <span key={index} className="badge bg-primary me-2 mb-2 p-2">
-                        {tag}
-                        <button 
-                          type="button" 
-                          className="btn-close btn-close-white ms-2" 
-                          style={{ fontSize: '0.5rem' }}
-                          onClick={() => handleRemoveTag(tag)}
-                          aria-label="Remove tag"
-                        ></button>
-                      </span>
-                    ))}
-                  </div>
-                </Form.Group>
+              </Form.Group>
               
-                <Form.Group className="mb-3">
-                  <Form.Label>Wallet Address (Connected)</Form.Label>
+              <Form.Group className="mb-3">
+                <Form.Label>Tags</Form.Label>
+                <InputGroup>
                   <Form.Control
                     type="text"
-                    value={connectedWallet}
-                    disabled
-                    readOnly
-                    className="bg-light"
+                    placeholder="Enter a tag and press Add"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTag();
+                      }
+                    }}
                   />
-                  <Form.Text className="text-muted">
+                  <Button variant="outline-secondary" onClick={handleAddTag}>
+                    Add
+                  </Button>
+                </InputGroup>
+                <div className="mt-2">
+                  {formData.basics.tags.map((tag, index) => (
+                    <span key={index} className="badge bg-primary me-2 mb-2 p-2">
+                      {tag}
+                      <button 
+                        type="button" 
+                        className="btn-close btn-close-white ms-2" 
+                        style={{ fontSize: '0.5rem' }}
+                        onClick={() => handleRemoveTag(tag)}
+                        aria-label="Remove tag"
+                      ></button>
+                    </span>
+                  ))}
+                </div>
+              </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Wallet Address (Connected)</Form.Label>
+              <Form.Control
+                type="text"
+                value={connectedWallet}
+                disabled
+                readOnly
+                className="bg-light"
+              />
+              <Form.Text className="text-muted">
                     <strong>Important:</strong> This wallet will be the owner of the campaign and will create the campaign record.
-                  </Form.Text>
-                </Form.Group>
-                
+              </Form.Text>
+            </Form.Group>
+            
                 {/* Enhanced Contract Owner Selector */}
                 <ContractOwnerSelector
                   value={formData.basics.contractOwnerAddress}
@@ -2150,24 +2334,24 @@ const CreateCampaignPage = () => {
                 />
                 
                 {/* Enhanced Token Selector */}
-                <TokenSelector 
-                  value={formData.basics.tokenAddress}
-                  onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
-                  onValidate={handleTokenValidation}
-                  onReset={() => {
-                    setTokenInfo(null);
-                    // Reset to BSC when token is cleared
-                    handleInputChange('basics', 'blockchainChain', 'BSC');
+            <TokenSelector 
+              value={formData.basics.tokenAddress}
+              onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
+                onValidate={handleTokenValidation}
+                onReset={() => {
+                  setTokenInfo(null);
+                  // Reset to BSC when token is cleared
+                  handleInputChange('basics', 'blockchainChain', 'BSC');
                     
                     // Add field error
                     setFieldErrors(prev => ({
                       ...prev,
                       'basics.tokenAddress': 'Token is required'
                     }));
-                  }}
-                />
-                
-                <Form.Group className="mb-3">
+                }}
+            />
+            
+            <Form.Group className="mb-3">
                   <Form.Label>Select Blockchain</Form.Label>
                   <div className="d-flex flex-wrap gap-2">
                     {blockchainChains.map(chain => (
@@ -2195,34 +2379,34 @@ const CreateCampaignPage = () => {
                   </div>
                   <Form.Text className="text-muted mt-2">
                     Select the blockchain network for deploying your campaign. Make sure your wallet is connected to the same network.
-                  </Form.Text>
-                </Form.Group>
+                </Form.Text>
+            </Form.Group>
 
                 <FormField
                   label="Brief Description"
-                  as="textarea"
-                  rows={3}
-                  value={formData.basics.projectDescription}
-                  onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
-                  required
-                  placeholder="Briefly describe your project (max 300 characters)"
-                  maxLength={300}
+                as="textarea"
+                rows={3}
+                value={formData.basics.projectDescription}
+                onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
+                required
+                placeholder="Briefly describe your project (max 300 characters)"
+                maxLength={300}
                   validate={(val) => val && val.trim().length >= 10}
                   errorMessage="Description must be at least 10 characters"
                   error={fieldErrors['basics.projectDescription']}
-                />
-              
-                <Row>
-                  <Col md={6}>
+              />
+            
+            <Row>
+              <Col md={6}>
                     <FormField
                       label="Funding Goal"
-                      type="number"
-                      value={formData.basics.projectFundAmount}
-                      onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
-                      required
-                      min="1"
-                      step="0.01"
-                      placeholder="Enter amount"
+                    type="number"
+                    value={formData.basics.projectFundAmount}
+                    onChange={(e) => handleInputChange('basics', 'projectFundAmount', e.target.value)}
+                    required
+                    min="1"
+                    step="0.01"
+                    placeholder="Enter amount"
                       validate={(val) => val && !isNaN(val) && parseFloat(val) > 0}
                       errorMessage="Funding goal must be greater than 0"
                       error={fieldErrors['basics.projectFundAmount']}
@@ -2236,52 +2420,52 @@ const CreateCampaignPage = () => {
                           undefined
                       }
                     />
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Currency*</Form.Label>
-                      <Form.Select
-                        value={formData.basics.projectFundCurrency}
-                        onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
-                        required
-                      >
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="GBP">GBP</option>
-                      </Form.Select>
-                    </Form.Group>
-                  </Col>
-                </Row>
-                
+              </Col>
+              <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Campaign Image (Optional)</Form.Label>
-                  <Form.Control
-                    type="file"
-                    onChange={handleFileChange}
-                  />
-                  <Form.Text className="text-muted">
-                    Upload an image to represent your campaign. If not provided, a default image will be used.
-                  </Form.Text>
+                  <Form.Label>Currency*</Form.Label>
+                  <Form.Select
+                    value={formData.basics.projectFundCurrency}
+                    onChange={(e) => handleInputChange('basics', 'projectFundCurrency', e.target.value)}
+                    required
+                  >
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                  </Form.Select>
                 </Form.Group>
-                
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Launch Date</Form.Label>
-                      <Form.Control
-                        type="date"
-                        value={formData.basics.projectLaunchDate}
-                        onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
+              </Col>
+            </Row>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Campaign Image (Optional)</Form.Label>
+              <Form.Control
+                type="file"
+                onChange={handleFileChange}
+              />
+              <Form.Text className="text-muted">
+                Upload an image to represent your campaign. If not provided, a default image will be used.
+              </Form.Text>
+            </Form.Group>
+            
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Launch Date</Form.Label>
+                  <Form.Control
+                    type="date"
+                    value={formData.basics.projectLaunchDate}
+                    onChange={(e) => handleInputChange('basics', 'projectLaunchDate', e.target.value)}
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={6}>
                     <FormField
                       label="Campaign Duration (days)"
                       type="number"
-                      value={formData.basics.projectDeadlineDate}
-                      onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
-                      required
+                    value={formData.basics.projectDeadlineDate}
+                    onChange={(e) => handleInputChange('basics', 'projectDeadlineDate', e.target.value)}
+                    required
                       min="1"
                       max="365"
                       placeholder="Enter number of days"
@@ -2289,66 +2473,66 @@ const CreateCampaignPage = () => {
                       errorMessage="Duration must be between 1 and 365 days"
                       error={fieldErrors['basics.projectDeadlineDate']}
                     />
-                  </Col>
-                </Row>
-                
-                <Form.Group className="mb-3">
-                  <Form.Check
-                    type="checkbox"
-                    id="activate-immediately"
-                    label="Activate campaign immediately after creation"
-                    checked={formData.basics.activateImmediately}
-                    onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
-                  />
-                </Form.Group>
+              </Col>
+            </Row>
+            
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                  id="activate-immediately"
+                  label="Activate campaign immediately after creation"
+                checked={formData.basics.activateImmediately}
+                onChange={(e) => handleInputChange('basics', 'activateImmediately', e.target.checked)}
+              />
+            </Form.Group>
 
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Minimum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
-                      <Form.Control
-                        type="number"
-                        value={formData.basics.minContribution}
-                        onChange={(e) => handleInputChange('basics', 'minContribution', e.target.value)}
-                        min="0.01"
-                        step="0.01"
-                        placeholder="Enter minimum contribution amount"
-                      />
-                      <Form.Text className="text-muted">
-                        The smallest amount a supporter can contribute (default: 0.01)
-                      </Form.Text>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Maximum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
-                      <Form.Control
-                        type="number"
-                        value={formData.basics.maxContribution}
-                        onChange={(e) => handleInputChange('basics', 'maxContribution', e.target.value)}
-                        min="0"
-                        step="0.01"
-                        placeholder="Leave empty for no limit"
-                      />
-                      <Form.Text className="text-muted">
-                        The largest amount a supporter can contribute (leave empty for no limit)
-                      </Form.Text>
-                    </Form.Group>
-                  </Col>
-                </Row>
-              
-                <Form.Group className="mb-3">
-                  <Form.Check
-                    type="checkbox"
-                    id="enable-auto-refund"
-                    label="Enable automatic refunds if campaign fails to reach target"
-                    checked={formData.basics.enableAutoRefund}
-                    onChange={(e) => handleInputChange('basics', 'enableAutoRefund', e.target.checked)}
-                  />
-                  <Form.Text className="text-muted">
-                    When enabled, contributors will automatically receive refunds if the campaign doesn't meet its target
-                  </Form.Text>
-                </Form.Group>
+              <Row>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Minimum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={formData.basics.minContribution}
+                      onChange={(e) => handleInputChange('basics', 'minContribution', e.target.value)}
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Enter minimum contribution amount"
+                    />
+                    <Form.Text className="text-muted">
+                      The smallest amount a supporter can contribute (default: 0.01)
+                    </Form.Text>
+                  </Form.Group>
+                </Col>
+                <Col md={6}>
+                  <Form.Group className="mb-3">
+                    <Form.Label>Maximum Contribution ({formData.basics.projectFundCurrency})</Form.Label>
+                    <Form.Control
+                      type="number"
+                      value={formData.basics.maxContribution}
+                      onChange={(e) => handleInputChange('basics', 'maxContribution', e.target.value)}
+                      min="0"
+                      step="0.01"
+                      placeholder="Leave empty for no limit"
+                    />
+                    <Form.Text className="text-muted">
+                      The largest amount a supporter can contribute (leave empty for no limit)
+                    </Form.Text>
+                  </Form.Group>
+                </Col>
+              </Row>
+            
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                  id="enable-auto-refund"
+                  label="Enable automatic refunds if campaign fails to reach target"
+                  checked={formData.basics.enableAutoRefund}
+                  onChange={(e) => handleInputChange('basics', 'enableAutoRefund', e.target.checked)}
+                />
+                <Form.Text className="text-muted">
+                  When enabled, contributors will automatically receive refunds if the campaign doesn't meet its target
+                </Form.Text>
+            </Form.Group>
                 
                 <div className="d-flex justify-content-between">
                   <div></div>
@@ -2364,8 +2548,8 @@ const CreateCampaignPage = () => {
                   </Button>
                 </div>
               </Form>
-            </Card.Body>
-          </Card>
+          </Card.Body>
+        </Card>
         </Tab>
         <Tab eventKey="preview" title="Preview">
           <Card className="mb-3">
@@ -2513,7 +2697,7 @@ const CreateCampaignPage = () => {
                   onChange={(e) => handleInputChange('story', 'projectTimeline', e.target.value)}
                   placeholder="What is your timeline for completing this project?"
                 />
-                
+              
                 <FormField
                   label="Budget Breakdown"
                   as="textarea"
@@ -2561,73 +2745,73 @@ const CreateCampaignPage = () => {
               </div>
               
               <Form>
-                {formData.team.members.map((member, index) => (
+              {formData.team.members.map((member, index) => (
                   <Card key={index} className="mb-3">
                     <Card.Body>
                       <div className="d-flex justify-content-between">
                         <h5>Team Member {index + 1}</h5>
-                        {formData.team.members.length > 1 && (
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => removeTeamMember(index)}
-                          >
-                            Remove
-                          </Button>
-                        )}
+                    {formData.team.members.length > 1 && (
+                      <Button 
+                        variant="outline-danger" 
+                        size="sm"
+                        onClick={() => removeTeamMember(index)}
+                      >
+                        Remove
+                      </Button>
+                    )}
                       </div>
                       
-                      <Row>
-                        <Col md={6}>
-                          <Form.Group className="mb-3">
-                            <Form.Label>Name</Form.Label>
-                            <Form.Control
-                              type="text"
-                              value={member.name}
-                              onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
-                              placeholder="Full name"
-                            />
-                          </Form.Group>
-                        </Col>
-                        <Col md={6}>
-                          <Form.Group className="mb-3">
-                            <Form.Label>Role</Form.Label>
-                            <Form.Control
-                              type="text"
-                              value={member.role}
-                              onChange={(e) => handleTeamMemberChange(index, 'role', e.target.value)}
+                    <Row>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Name</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={member.name}
+                            onChange={(e) => handleTeamMemberChange(index, 'name', e.target.value)}
+                            placeholder="Full name"
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Role</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={member.role}
+                            onChange={(e) => handleTeamMemberChange(index, 'role', e.target.value)}
                               placeholder="e.g. Developer, Designer, Marketing"
-                            />
-                          </Form.Group>
-                        </Col>
-                      </Row>
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
                       
-                      <Form.Group className="mb-3">
-                        <Form.Label>Bio</Form.Label>
-                        <Form.Control
-                          as="textarea"
+                    <Form.Group className="mb-3">
+                      <Form.Label>Bio</Form.Label>
+                      <Form.Control
+                        as="textarea"
                           rows={3}
-                          value={member.bio}
-                          onChange={(e) => handleTeamMemberChange(index, 'bio', e.target.value)}
+                        value={member.bio}
+                        onChange={(e) => handleTeamMemberChange(index, 'bio', e.target.value)}
                           placeholder="Brief description of this person's background and expertise"
-                        />
-                      </Form.Group>
+                      />
+                    </Form.Group>
                       
-                      <Form.Group className="mb-3">
+                    <Form.Group className="mb-3">
                         <Form.Label>Social Media Link</Form.Label>
-                        <Form.Control
-                          type="text"
-                          value={member.social}
-                          onChange={(e) => handleTeamMemberChange(index, 'social', e.target.value)}
+                      <Form.Control
+                        type="text"
+                        value={member.social}
+                        onChange={(e) => handleTeamMemberChange(index, 'social', e.target.value)}
                           placeholder="LinkedIn, Twitter, or GitHub profile URL"
-                        />
-                      </Form.Group>
-                    </Card.Body>
-                  </Card>
-                ))}
-                
+                      />
+                    </Form.Group>
+                  </Card.Body>
+                </Card>
+              ))}
+              
                 <div className="d-flex justify-content-between">
-                  <Button 
+                <Button 
                     variant="outline-secondary" 
                     onClick={() => handleTabChange('story')}
                   >
@@ -2641,8 +2825,8 @@ const CreateCampaignPage = () => {
                     }}
                   >
                     Next: Social Links
-                  </Button>
-                </div>
+                </Button>
+              </div>
               </Form>
             </Card.Body>
           </Card>
@@ -2655,17 +2839,17 @@ const CreateCampaignPage = () => {
               <p className="text-muted">Connect your project's online presence.</p>
               
               <Form>
-                <Form.Group className="mb-3">
+              <Form.Group className="mb-3">
                   <Form.Label>Project Website</Form.Label>
-                  <Form.Control
-                    type="url"
-                    value={formData.social.website}
-                    onChange={(e) => handleSocialChange('website', e.target.value)}
+                <Form.Control
+                  type="url"
+                  value={formData.social.website}
+                  onChange={(e) => handleSocialChange('website', e.target.value)}
                     placeholder="https://yourproject.com"
-                  />
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
+                />
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
                   <Form.Label>Twitter/X</Form.Label>
                   <Form.Control
                     type="url"
@@ -2673,56 +2857,56 @@ const CreateCampaignPage = () => {
                     onChange={(e) => handleSocialChange('twitter', e.target.value)}
                     placeholder="https://twitter.com/yourproject"
                   />
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Telegram</Form.Label>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Telegram</Form.Label>
                   <Form.Control
                     type="url"
                     value={formData.social.telegram}
                     onChange={(e) => handleSocialChange('telegram', e.target.value)}
                     placeholder="https://t.me/yourproject"
                   />
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>Discord</Form.Label>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Discord</Form.Label>
                   <Form.Control
                     type="url"
                     value={formData.social.discord}
                     onChange={(e) => handleSocialChange('discord', e.target.value)}
                     placeholder="https://discord.gg/yourproject"
                   />
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>GitHub</Form.Label>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>GitHub</Form.Label>
                   <Form.Control
                     type="url"
                     value={formData.social.github}
                     onChange={(e) => handleSocialChange('github', e.target.value)}
                     placeholder="https://github.com/yourproject"
                   />
-                </Form.Group>
-                
-                <Form.Group className="mb-3">
-                  <Form.Label>LinkedIn</Form.Label>
+              </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>LinkedIn</Form.Label>
                   <Form.Control
                     type="url"
                     value={formData.social.linkedin}
                     onChange={(e) => handleSocialChange('linkedin', e.target.value)}
                     placeholder="https://linkedin.com/company/yourproject"
                   />
-                </Form.Group>
+              </Form.Group>
                 
                 <div className="d-flex justify-content-between">
-                  <Button 
+                    <Button 
                     variant="outline-secondary" 
                     onClick={() => handleTabChange('team')}
                   >
                     Back to Team
-                  </Button>
-                  <Button 
+                    </Button>
+                <Button 
                     variant="primary" 
                     onClick={() => {
                       validateSection('social');
@@ -2730,8 +2914,8 @@ const CreateCampaignPage = () => {
                     }}
                   >
                     Next: Milestones
-                  </Button>
-                </div>
+                </Button>
+              </div>
               </Form>
             </Card.Body>
           </Card>
@@ -2748,26 +2932,26 @@ const CreateCampaignPage = () => {
               <p className="text-muted">Let supporters know how often you'll provide progress updates.</p>
               
               <Form>
-                <Form.Group className="mb-3">
+              <Form.Group className="mb-3">
                   <Form.Label>How often will you post updates about your campaign?</Form.Label>
-                  <Form.Select
-                    value={formData.updates.scheduleCommitment}
-                    onChange={(e) => handleInputChange('updates', 'scheduleCommitment', e.target.value)}
-                  >
+                <Form.Select
+                  value={formData.updates.scheduleCommitment}
+                  onChange={(e) => handleInputChange('updates', 'scheduleCommitment', e.target.value)}
+                >
                     <option value="weekly">Weekly</option>
                     <option value="biweekly">Biweekly</option>
                     <option value="monthly">Monthly</option>
-                  </Form.Select>
-                  <Form.Text className="text-muted">
+                </Form.Select>
+                <Form.Text className="text-muted">
                     Regular updates help keep your supporters engaged and build trust.
-                  </Form.Text>
-                </Form.Group>
-                
+                </Form.Text>
+              </Form.Group>
+              
                 <Alert variant="info" className="mb-3">
                   <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
                   After your campaign launches, you can post updates through the campaign dashboard.
                   These updates will be visible to all supporters and can include text, images, and links.
-                </Alert>
+              </Alert>
                 
                 <div className="d-flex justify-content-between">
                   <Button 
@@ -2826,8 +3010,8 @@ const CreateCampaignPage = () => {
                         <li>You must comply with all applicable laws and regulations</li>
                       </ul>
                     </Card.Text>
-                    <Form.Check
-                      type="checkbox"
+                <Form.Check 
+                  type="checkbox"
                       id="terms-accepted"
                       label="I have read and agree to the Terms of Service"
                       checked={formData.legal.termsAccepted}
@@ -2930,15 +3114,15 @@ const CreateCampaignPage = () => {
                           )}
                         </div>
                         
-                        <Form.Group className="mb-3">
+                            <Form.Group className="mb-3">
                           <Form.Label>Title</Form.Label>
-                          <Form.Control
-                            type="text"
-                            value={reward.title}
-                            onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
+                              <Form.Control
+                                type="text"
+                                value={reward.title}
+                                onChange={(e) => handleRewardChange(index, 'title', e.target.value)}
                             placeholder="e.g. Early Supporter, Premium Backer"
-                          />
-                        </Form.Group>
+                              />
+                            </Form.Group>
                         
                         <Form.Group className="mb-3">
                           <Form.Label>Description</Form.Label>
@@ -2955,43 +3139,43 @@ const CreateCampaignPage = () => {
                           <Col md={6}>
                             <Form.Group className="mb-3">
                               <Form.Label>Contribution Amount ({formData.basics.projectFundCurrency})</Form.Label>
-                              <Form.Control
-                                type="number"
+                    <Form.Control
+                      type="number"
                                 value={reward.price}
                                 onChange={(e) => handleRewardChange(index, 'price', e.target.value)}
                                 min="0"
-                                step="0.01"
+                      step="0.01"
                                 placeholder="Minimum contribution to receive this reward"
-                              />
-                            </Form.Group>
-                          </Col>
+                    />
+                  </Form.Group>
+                </Col>
                           <Col md={6}>
                             <Form.Group className="mb-3">
                               <Form.Label>Available Items (0 for unlimited)</Form.Label>
-                              <Form.Control
-                                type="number"
+                    <Form.Control
+                      type="number"
                                 value={reward.availableItems}
                                 onChange={(e) => handleRewardChange(index, 'availableItems', e.target.value)}
                                 min="0"
                                 placeholder="How many of this reward are available?"
-                              />
-                            </Form.Group>
-                          </Col>
+                    />
+                  </Form.Group>
+                </Col>
                         </Row>
                         
-                        <Form.Group className="mb-3">
+                            <Form.Group className="mb-3">
                           <Form.Label>Estimated Delivery Date</Form.Label>
-                          <Form.Control
-                            type="date"
-                            value={reward.estimatedDelivery}
-                            onChange={(e) => handleRewardChange(index, 'estimatedDelivery', e.target.value)}
+                    <Form.Control
+                      type="date"
+                                value={reward.estimatedDelivery}
+                                onChange={(e) => handleRewardChange(index, 'estimatedDelivery', e.target.value)}
                           />
                         </Form.Group>
-                      </Card.Body>
-                    </Card>
+            </Card.Body>
+          </Card>
                   ))}
-                  
-                  <Button
+        
+        <Button 
                     variant="outline-primary"
                     onClick={() => {
                       const updatedRewards = [...formData.rewards.projectRewards];

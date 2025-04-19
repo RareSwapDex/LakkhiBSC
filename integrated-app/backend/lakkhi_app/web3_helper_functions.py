@@ -14,7 +14,7 @@ w3 = Web3(Web3.HTTPProvider(BSC_RPC_URL))
 ADMIN_ADDRESS = settings.ADMIN_ADDRESS
 ADMIN_PRIVATE_KEY = settings.ADMIN_PRIVATE_KEY
 
-# Load token contract and staking contract details
+# Load token contract details
 try:
     with open(os.path.join(settings.BASE_DIR, 'static/token.json')) as token_json:
         token_data = json.load(token_json)
@@ -29,28 +29,6 @@ except:
     TOKEN_ADDRESS = settings.TOKEN_ADDRESS
     TOKEN_ABI = []
     TOKEN_DECIMALS = 1000000000000000000  # 18 decimals
-
-# Staking factory contract - creates new staking contracts
-STAKING_FACTORY_ADDRESS = os.environ.get('STAKING_FACTORY_ADDRESS', '0x0000000000000000000000000000000000000000')
-try:
-    with open(os.path.join(settings.BASE_DIR, 'static/staking_factory_abi.json')) as factory_json:
-        STAKING_FACTORY_ABI = json.load(factory_json)
-except:
-    # Default simple ABI if file not found
-    STAKING_FACTORY_ABI = [
-        {
-            "inputs": [
-                {"internalType": "string", "name": "name", "type": "string"},
-                {"internalType": "address", "name": "tokenAddress", "type": "address"},
-                {"internalType": "address", "name": "beneficiary", "type": "address"},
-                {"internalType": "uint256", "name": "targetAmount", "type": "uint256"}
-            ],
-            "name": "createStakingContract",
-            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-            "stateMutability": "nonpayable",
-            "type": "function"
-        }
-    ]
 
 # Staking contract ABI - for interacting with deployed staking contracts
 try:
@@ -102,6 +80,16 @@ except:
             "type": "function"
         }
     ]
+
+# Staking contract bytecode - for direct deployment
+try:
+    with open(os.path.join(settings.BASE_DIR, 'static/staking_bytecode.txt')) as bytecode_file:
+        STAKING_BYTECODE = bytecode_file.read().strip()
+except:
+    # If bytecode file is missing, this will cause an error - which is correct behavior
+    # We don't want to deploy contracts without the actual bytecode
+    STAKING_BYTECODE = None
+    print("ERROR: Missing staking contract bytecode file at static/staking_bytecode.txt")
 
 def estimate_gas_costs(operation_type, token_address=None):
     """
@@ -182,7 +170,7 @@ def estimate_gas_costs(operation_type, token_address=None):
 
 def deploy_staking_contract(project_name, project_target, project_owner, token_address=None, wallet_key=None):
     """
-    Create a new staking contract for a project using the factory contract
+    Deploy a new staking contract for a project directly
     
     Args:
         project_name: Name of the project
@@ -222,38 +210,6 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
                 }
             print(f"Using custom token {token_info['symbol']} ({token_address})")
         
-        # Create contract factory instance
-        factory_contract = w3.eth.contract(
-            address=STAKING_FACTORY_ADDRESS,
-            abi=STAKING_FACTORY_ABI
-        )
-        
-        # If no wallet key provided, return deployment instructions instead of deploying
-        if not wallet_key:
-            # Get the current gas price and estimate gas for optimization
-            current_gas_price = w3.eth.gas_price
-            optimized_gas_price = int(current_gas_price * 0.9)  # 90% of current gas price
-            
-            # Estimate gas cost
-            gas_estimate = estimate_gas_costs('deploy_contract', token_address)
-            
-            # Generate deployment instructions
-            return {
-                'success': True,
-                'requires_wallet': True,
-                'message': 'Deployment requires wallet signature',
-                'deployment_data': {
-                    'factory_address': STAKING_FACTORY_ADDRESS,
-                    'project_name': project_name,
-                    'token_address': token_address,
-                    'owner_address': owner_address,
-                    'target_wei': str(target_wei),
-                    'estimated_gas': gas_estimate.get('gas_amount', 3000000),
-                    'gas_price': optimized_gas_price,
-                    'estimated_cost_usd': gas_estimate.get('cost_usd', 'Unknown')
-                }
-            }
-        
         # Get the current gas price and estimate gas for optimization
         current_gas_price = w3.eth.gas_price
         
@@ -269,10 +225,13 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         gas_estimate = estimate_gas_costs('deploy_contract', token_address)
         print(f"Estimated deployment cost: {gas_estimate.get('cost_usd', 'Unknown')} USD")
         
-        # Build transaction to create staking contract
-        tx = factory_contract.functions.createStakingContract(
+        # Create and deploy the contract directly
+        contract = w3.eth.contract(bytecode=STAKING_BYTECODE, abi=STAKING_ABI)
+        
+        # Build deployment transaction
+        tx = contract.constructor(
             project_name,
-            token_address,  # Use the selected token address
+            token_address,
             owner_address,
             target_wei
         ).build_transaction({
@@ -293,22 +252,15 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
         print(f"Transaction confirmed in block: {receipt['blockNumber']}")
         
-        # Get contract address from transaction logs
-        logs = factory_contract.events.StakingContractCreated().process_receipt(receipt)
-        if logs:
-            contract_address = logs[0]['args']['contractAddress']
-            print(f"Contract deployed at: {contract_address}")
-        else:
-            # Fallback: get the contract address from deployed contracts
-            # We're getting the latest contract from the factory
-            deployed_contracts = factory_contract.functions.getDeployedContracts().call()
-            contract_address = deployed_contracts[-1] if deployed_contracts else None
-            
-            if not contract_address:
-                return {
-                    'success': False,
-                    'message': 'Failed to retrieve contract address from transaction logs'
-                }
+        # Get contract address from receipt
+        contract_address = receipt.contractAddress
+        if not contract_address:
+            return {
+                'success': False,
+                'message': 'Failed to retrieve contract address from receipt'
+            }
+        
+        print(f"Contract deployed at: {contract_address}")
         
         return {
             'success': True,

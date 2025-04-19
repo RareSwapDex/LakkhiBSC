@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/payment/process/', views.payment_process, name='payment_process'),
     path('api/mercuryo/callback/', views.mercuryo_callback, name='mercuryo_callback'),
     path('api/campaigns/<int:campaign_id>/analytics/export/', views.export_analytics, name='export-analytics'),
+    path('api/contract-config/', views.contract_config, name='contract-config'),
     
     # Include router URLs
     path('api/', include(router.urls)),
