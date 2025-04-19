@@ -579,190 +579,36 @@ def get_token_info(token_address, blockchain='BSC'):
                 'message': 'Token address is required'
             }
         
-        # Clean up the address
-        token_address = token_address.strip()
-        
-        # Validate the address format
-        if not token_address.startswith('0x') or len(token_address) != 42:
+        if not Web3.is_address(token_address):
             return {
                 'success': False,
-                'message': 'Invalid token address format. Must be a valid BSC address in 0x format.'
+                'message': 'Invalid token address format'
             }
-    
-        # Validate the address using web3
+        
+        # Create token contract instance
+        token_contract = w3.eth.contract(address=token_address, abi=TOKEN_ABI)
+        
+        # Get token details
         try:
-            if not w3.is_address(token_address):
-                return {
-                    'success': False,
-                    'message': 'Invalid token address checksum'
-                }
+            name = token_contract.functions.name().call()
+            symbol = token_contract.functions.symbol().call()
+            decimals = token_contract.functions.decimals().call()
+            
+            return {
+                'success': True,
+                'address': token_address,
+                'name': name,
+                'symbol': symbol,
+                'decimals': decimals,
+                'blockchain': blockchain
+            }
         except Exception as e:
             return {
                 'success': False,
-                'message': f'Address validation error: {str(e)}'
+                'message': f"Error getting token information: {str(e)}"
             }
-            
-        # Standard ERC20 token ABI functions for name, symbol, decimals
-        # This is a minimal ABI needed to get token details
-        token_abi = [
-            {
-                "constant": True,
-                "inputs": [],
-                "name": "name",
-                "outputs": [{"name": "", "type": "string"}],
-                "payable": False,
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "constant": True,
-                "inputs": [],
-                "name": "symbol",
-                "outputs": [{"name": "", "type": "string"}],
-                "payable": False,
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "constant": True,
-                "inputs": [],
-                "name": "decimals",
-                "outputs": [{"name": "", "type": "uint8"}],
-                "payable": False,
-                "stateMutability": "view",
-                "type": "function"
-            },
-            {
-                "constant": True,
-                "inputs": [],
-                "name": "totalSupply",
-                "outputs": [{"name": "", "type": "uint256"}],
-                "payable": False,
-                "stateMutability": "view",
-                "type": "function"
-            }
-        ]
-        
-        # Create a contract instance
-        token_contract = w3.eth.contract(address=token_address, abi=token_abi)
-        
-        # Check if it's a contract first
-        code = w3.eth.get_code(token_address)
-        if code == b'' or code == '0x' or code == '0x0' or len(code) < 3:
-            return {
-                'success': False,
-                'message': 'Address is not a contract. Check that you entered a token contract address.'
-            }
-        
-        # Fetch token details
-        # Use try-except for each call to handle tokens that don't implement all standard functions
-        try:
-            name = token_contract.functions.name().call()
-        except Exception:
-            name = "Unknown Token"
-            
-        try:
-            symbol = token_contract.functions.symbol().call()
-        except Exception:
-            symbol = "???"
-            
-        try:
-            decimals = token_contract.functions.decimals().call()
-        except Exception:
-            decimals = 18  # Default to 18 if not specified
-            
-        try:
-            total_supply = token_contract.functions.totalSupply().call()
-            total_supply_formatted = total_supply / (10 ** decimals)
-        except Exception:
-            total_supply = 0
-            total_supply_formatted = 0
-        
-        # Return token info
-        return {
-            'success': True,
-            'name': name,
-            'symbol': symbol,
-            'decimals': decimals,
-            'total_supply': total_supply,
-            'total_supply_formatted': total_supply_formatted,
-            'address': token_address
-        }
     except Exception as e:
-        print(f"Error getting token information: {e}")
         return {
             'success': False,
             'message': f"Error getting token information: {str(e)}"
         } 
-
-def deploy_campaign_contract(token_address, campaign_owner, campaign_id, blockchain='BSC'):
-    """
-    Deploy a campaign contract for the specified campaign
-    
-    Args:
-        token_address: Address of token to use with the campaign
-        campaign_owner: Wallet address of campaign owner
-        campaign_id: ID of the campaign in the database
-        blockchain: The blockchain to deploy on (Ethereum, BSC, Base)
-        
-    Returns:
-        str: Address of the deployed contract or error message
-    """
-    try:
-        # Get the Web3 provider for the specified blockchain
-        w3 = get_web3_provider(blockchain)
-        
-        # Get campaign details from database
-        from .models import Campaign
-        campaign = Campaign.objects.get(pk=campaign_id)
-        
-        # Load contract ABI and bytecode
-        abi_file_path = os.path.join(settings.BASE_DIR, 'static/staking_abi.json')
-        with open(abi_file_path) as abi_file:
-            abi = json.load(abi_file)
-            
-        try:
-            with open(os.path.join(settings.BASE_DIR, 'static/staking_bytecode.txt')) as bytecode_file:
-                bytecode = bytecode_file.read().strip()
-        except:
-            return "Error: Missing contract bytecode file"
-            
-        # Create contract instance
-        contract = w3.eth.contract(abi=abi, bytecode=bytecode)
-        
-        # Prepare constructor arguments
-        constructor_args = [
-            campaign.title,
-            token_address,
-            campaign_owner,
-            w3.to_wei(float(campaign.fund_amount), 'ether')
-        ]
-        
-        # Get nonce for transaction
-        nonce = w3.eth.get_transaction_count(campaign_owner)
-        
-        # Get chain ID
-        chain_id = settings.CHAIN_IDS.get(blockchain, 56)  # Default to BSC
-        
-        # Build contract deployment transaction
-        tx = contract.constructor(*constructor_args).build_transaction({
-            'from': campaign_owner,
-            'nonce': nonce,
-            'gas': 3000000,
-            'gasPrice': w3.eth.gas_price,
-            'chainId': chain_id
-        })
-        
-        # Here, in a real implementation, you would:
-        # 1. Have the user sign this transaction with their wallet
-        # 2. Broadcast the signed transaction
-        # 3. Wait for receipt and return contract address
-        
-        # For development/demo purposes, we're returning a mock contract address
-        # This would be replaced with actual contract deployment in production
-        mock_contract_address = f"0x{blockchain[:2]}23456789abcdef0123456789abcdef012345678"
-        
-        return mock_contract_address
-    except Exception as e:
-        print(f"Error deploying campaign contract: {str(e)}")
-        return str(e) 

@@ -177,6 +177,7 @@ def create_campaign(request):
             deadline=request.data.get("basics.projectDeadlineDate", "30"),
             launch_date=request.data.get("basics.projectLaunchDate"),
             blockchain=blockchain,  # Save the blockchain selection
+            contract_address=request.data.get("contract_address"),  # Get contract address from frontend
             status="DRAFT"
         )
         
@@ -184,18 +185,6 @@ def create_campaign(request):
         if "basics.projectImageFile" in request.FILES:
             campaign.thumbnail = request.FILES["basics.projectImageFile"]
             campaign.save()
-            
-        # Deploy campaign contract using campaign owner's wallet
-        contract_address = deploy_campaign_contract(
-            token_address=settings.LAKKHI_TOKEN_ADDRESS,
-            campaign_owner=request.user.wallet_address,
-            campaign_id=campaign.id,
-            blockchain=blockchain  # Pass blockchain to deployment function
-        )
-        
-        # Update campaign with contract address
-        campaign.contract_address = contract_address
-        campaign.save()
         
         # Send confirmation email
         campaign_url = f"{settings.FRONTEND_URL}/campaigns/{campaign.id}"
@@ -225,7 +214,6 @@ def create_campaign(request):
             "status": "success",
             "message": "Campaign created successfully",
             "campaign_id": campaign.id,
-            "contract_address": contract_address
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
