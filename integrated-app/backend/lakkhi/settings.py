@@ -134,6 +134,15 @@ DEFAULT_FROM_EMAIL = 'no-reply@lakkhi.com'
 
 # Blockchain Settings
 BSC_RPC_URL = os.environ.get('BSC_RPC_URL', 'https://bsc-dataseed.binance.org/')
+ETHEREUM_RPC_URL = os.environ.get('ETHEREUM_RPC_URL', 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161')
+BASE_RPC_URL = os.environ.get('BASE_RPC_URL', 'https://mainnet.base.org')
+
+# Chain IDs for mainnet
+CHAIN_IDS = {
+    'Ethereum': 1,
+    'BSC': 56,
+    'Base': 8453
+}
 
 # Admin account variables - DEPRECATED
 # These are no longer used as campaign creators now pay for their own gas fees
@@ -145,6 +154,9 @@ ADMIN_ADDRESS = os.environ.get('ADMIN_ADDRESS', '')
 # RAREFND_TOKEN = '0x264387ad73d19408e34b5d5e13a93174a35cea33'  # RareFnd token address
 LAKKHI_TOKEN = os.environ.get('LAKKHI_TOKEN', '0x264387ad73d19408e34b5d5e13a93174a35cea33')  # Default to RareFnd for testing
 TOKEN_ADDRESS = LAKKHI_TOKEN  # Set to LAKKHI_TOKEN for production
+
+# PancakeSwap Factory Settings
+STAKING_FACTORY_ADDRESS = os.environ.get('STAKING_FACTORY_ADDRESS', '0x10ED43C718714eb63d5aA57B78B54704E256024E')  # PancakeSwap Router
 
 # Client settings for compatibility
 CLIENT_ID = "TheRareAntiquities-capsule"

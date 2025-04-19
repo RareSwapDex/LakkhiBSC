@@ -3,10 +3,33 @@ import os
 from web3 import Web3
 from django.conf import settings
 import time
+from web3.middleware import geth_poa_middleware
 
 # Connect to BSC network (using BSC's public endpoint)
 BSC_RPC_URL = settings.BSC_RPC_URL
-w3 = Web3(Web3.HTTPProvider(BSC_RPC_URL))
+# w3 is now initialized by get_web3_provider function
+
+# Function to get the appropriate Web3 provider based on blockchain
+def get_web3_provider(blockchain='BSC'):
+    """Get web3 provider for the specified blockchain"""
+    if blockchain == 'Ethereum':
+        rpc_url = settings.ETHEREUM_RPC_URL
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+    elif blockchain == 'Base':
+        rpc_url = settings.BASE_RPC_URL
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        # Base is a Layer 2 that uses the PoA consensus, so we need to inject the middleware
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+    else:  # Default to BSC
+        rpc_url = settings.BSC_RPC_URL
+        w3 = Web3(Web3.HTTPProvider(rpc_url))
+        # BSC uses PoA consensus, so we need to inject the middleware
+        w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        
+    return w3
+
+# Default Web3 instance for backward compatibility
+w3 = get_web3_provider('BSC')
 
 # Admin account variables - DEPRECATED
 # These are no longer used as campaign creators now pay for their own gas fees
@@ -91,18 +114,22 @@ except:
     STAKING_BYTECODE = None
     print("ERROR: Missing staking contract bytecode file at static/staking_bytecode.txt")
 
-def estimate_gas_costs(operation_type, token_address=None):
+def estimate_gas_costs(operation_type, token_address=None, blockchain='BSC'):
     """
     Estimate gas costs for different token operations
     
     Args:
         operation_type: Type of operation (deploy, stake, approve, etc.)
         token_address: Address of token for operations that involve tokens
+        blockchain: The blockchain to use (Ethereum, BSC, Base)
         
     Returns:
         dict: Estimated gas costs in wei, gwei, and USD (approximate)
     """
     try:
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
         # Current gas price in wei
         gas_price = w3.eth.gas_price
         gas_price_gwei = w3.from_wei(gas_price, 'gwei')
@@ -168,7 +195,7 @@ def estimate_gas_costs(operation_type, token_address=None):
             'message': str(e)
         }
 
-def deploy_staking_contract(project_name, project_target, project_owner, token_address=None, wallet_key=None):
+def deploy_staking_contract(project_name, project_target, project_owner, token_address=None, wallet_key=None, blockchain='BSC'):
     """
     Deploy a new staking contract for a project directly
     
@@ -178,11 +205,15 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         project_owner: Wallet address of the project owner
         token_address: Optional custom token address to use (defaults to settings.TOKEN_ADDRESS)
         wallet_key: The private key of the wallet that will pay for deployment (should be the creator's wallet)
+        blockchain: The blockchain to deploy on (Ethereum, BSC, Base)
         
     Returns:
         dict: Result containing success status and contract details or instructions
     """
     try:
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
         # Convert target to wei (assuming 18 decimals)
         target_wei = w3.to_wei(project_target, 'ether')
         
@@ -202,7 +233,7 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
             print(f"Using default token address: {token_address}")
         else:
             # Validate the token address
-            token_info = get_token_info(token_address)
+            token_info = get_token_info(token_address, blockchain)
             if not token_info['success']:
                 return {
                     'success': False,
@@ -222,11 +253,14 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
         nonce = w3.eth.get_transaction_count(owner_address)
         
         # Estimate gas cost
-        gas_estimate = estimate_gas_costs('deploy_contract', token_address)
+        gas_estimate = estimate_gas_costs('deploy_contract', token_address, blockchain)
         print(f"Estimated deployment cost: {gas_estimate.get('cost_usd', 'Unknown')} USD")
         
         # Create and deploy the contract directly
         contract = w3.eth.contract(bytecode=STAKING_BYTECODE, abi=STAKING_ABI)
+        
+        # Get the correct chain ID for the transaction
+        chain_id = settings.CHAIN_IDS.get(blockchain, 56)  # Default to BSC
         
         # Build deployment transaction
         tx = contract.constructor(
@@ -239,6 +273,7 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
             'gas': gas_estimate.get('gas_amount', 3000000),  # Use estimated gas
             'gasPrice': optimized_gas_price,  # Use optimized gas price for cost savings
             'nonce': nonce,
+            'chainId': chain_id  # Use the correct chain ID
         })
         
         # Sign the transaction with the provided wallet key
@@ -268,15 +303,19 @@ def deploy_staking_contract(project_name, project_target, project_owner, token_a
             'contract_abi': STAKING_ABI,
             'owner_address': owner_address,
             'tx_hash': tx_hash.hex(),
-            'message': 'Staking contract deployed successfully on-chain'
+            'blockchain': blockchain,
+            'message': f'Staking contract deployed successfully on {blockchain} blockchain'
         }
     except Exception as e:
         print(f"Error deploying staking contract: {e}")
         return {'success': False, 'message': str(e)}
 
-def get_staking_contract(contract_address):
+def get_staking_contract(contract_address, blockchain='BSC'):
     """Get a staking contract instance"""
     try:
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
         # Create contract instance
         contract = w3.eth.contract(address=contract_address, abi=STAKING_ABI)
         return contract
@@ -284,10 +323,13 @@ def get_staking_contract(contract_address):
         print(f"Error getting staking contract: {e}")
         return None
 
-def get_staking_contract_status(contract_address):
+def get_staking_contract_status(contract_address, blockchain='BSC'):
     """Get status of a staking contract"""
     try:
-        contract = get_staking_contract(contract_address)
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
+        contract = get_staking_contract(contract_address, blockchain)
         if not contract:
             return {'success': False, 'message': 'Invalid contract address'}
         
@@ -515,17 +557,21 @@ def release_funds(contract_address, wallet_info):
         print(f"Error releasing funds: {e}")
         return {'success': False, 'message': str(e)} 
 
-def get_token_info(token_address):
+def get_token_info(token_address, blockchain='BSC'):
     """
     Get token information for a token address from the blockchain
     
     Args:
         token_address: Address of the ERC20/BEP20 token
+        blockchain: The blockchain to use (Ethereum, BSC, Base)
         
     Returns:
         dict: Token information including name, symbol, decimals
     """
     try:
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
         # Basic validation first
         if not token_address:
             return {
@@ -648,3 +694,75 @@ def get_token_info(token_address):
             'success': False,
             'message': f"Error getting token information: {str(e)}"
         } 
+
+def deploy_campaign_contract(token_address, campaign_owner, campaign_id, blockchain='BSC'):
+    """
+    Deploy a campaign contract for the specified campaign
+    
+    Args:
+        token_address: Address of token to use with the campaign
+        campaign_owner: Wallet address of campaign owner
+        campaign_id: ID of the campaign in the database
+        blockchain: The blockchain to deploy on (Ethereum, BSC, Base)
+        
+    Returns:
+        str: Address of the deployed contract or error message
+    """
+    try:
+        # Get the Web3 provider for the specified blockchain
+        w3 = get_web3_provider(blockchain)
+        
+        # Get campaign details from database
+        from .models import Campaign
+        campaign = Campaign.objects.get(pk=campaign_id)
+        
+        # Load contract ABI and bytecode
+        abi_file_path = os.path.join(settings.BASE_DIR, 'static/staking_abi.json')
+        with open(abi_file_path) as abi_file:
+            abi = json.load(abi_file)
+            
+        try:
+            with open(os.path.join(settings.BASE_DIR, 'static/staking_bytecode.txt')) as bytecode_file:
+                bytecode = bytecode_file.read().strip()
+        except:
+            return "Error: Missing contract bytecode file"
+            
+        # Create contract instance
+        contract = w3.eth.contract(abi=abi, bytecode=bytecode)
+        
+        # Prepare constructor arguments
+        constructor_args = [
+            campaign.title,
+            token_address,
+            campaign_owner,
+            w3.to_wei(float(campaign.fund_amount), 'ether')
+        ]
+        
+        # Get nonce for transaction
+        nonce = w3.eth.get_transaction_count(campaign_owner)
+        
+        # Get chain ID
+        chain_id = settings.CHAIN_IDS.get(blockchain, 56)  # Default to BSC
+        
+        # Build contract deployment transaction
+        tx = contract.constructor(*constructor_args).build_transaction({
+            'from': campaign_owner,
+            'nonce': nonce,
+            'gas': 3000000,
+            'gasPrice': w3.eth.gas_price,
+            'chainId': chain_id
+        })
+        
+        # Here, in a real implementation, you would:
+        # 1. Have the user sign this transaction with their wallet
+        # 2. Broadcast the signed transaction
+        # 3. Wait for receipt and return contract address
+        
+        # For development/demo purposes, we're returning a mock contract address
+        # This would be replaced with actual contract deployment in production
+        mock_contract_address = f"0x{blockchain[:2]}23456789abcdef0123456789abcdef012345678"
+        
+        return mock_contract_address
+    except Exception as e:
+        print(f"Error deploying campaign contract: {str(e)}")
+        return str(e) 
