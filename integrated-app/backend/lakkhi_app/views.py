@@ -554,6 +554,8 @@ def mercuryo_checkout_url(request):
         project_id = data.get('projectId')
         selected_incentive = data.get('selectedIncentive', 0)
         redirect_url = data.get('redirectURL', request.build_absolute_uri('/'))
+        # Extract blockchain parameter from the request
+        blockchain = data.get('blockchain', 'BSC')
         
         # Validate inputs
         if not email or amount is None or project_id is None:
@@ -570,6 +572,10 @@ def mercuryo_checkout_url(request):
                     "success": False, 
                     "message": "Project is not active"
                 })
+                
+            # Use project's blockchain if not specified in the request
+            if not blockchain or blockchain == 'BSC':
+                blockchain = project.chain or 'BSC'
         except Project.DoesNotExist:
             return JsonResponse({
                 "success": False, 
@@ -585,11 +591,12 @@ def mercuryo_checkout_url(request):
             status='pending'
         )
         
-        # Generate Mercuryo checkout URL
+        # Generate Mercuryo checkout URL with the correct blockchain parameter
         checkout_result = PaymentProcessor.get_mercuryo_checkout_url(
             contribution=contribution, 
             session_id=str(contribution.id),
-            return_url=redirect_url
+            return_url=redirect_url,
+            blockchain=blockchain  # Pass the blockchain parameter
         )
         
         if checkout_result:
