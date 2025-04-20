@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProviderContextProvider } from './web3/ProviderContext';
 import ThemeProvider from './context/ThemeContext';
@@ -15,7 +15,6 @@ import NotFoundPage from './pages/NotFoundPage';
 import FAQPage from './pages/FAQ';
 import PrivacyPolicyPage from './pages/Privacy';
 import TermsOfServicePage from './pages/Terms';
-import DonateProjectPage from './pages/DonateProjectPage';
 import WhitepaperPage from './pages/WhitepaperPage';
 
 function App() {
@@ -23,30 +22,31 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <ProviderContextProvider>
-    <Router>
+          <Router>
             <div className="App">
-            <Navbar />
+              <Navbar />
               <main>
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/projects" element={<ProjectsPage />} />
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/projects" element={<ProjectsPage />} />
                   <Route path="/projects/:id" element={<ProjectDetailsPage />} />
                   <Route path="/campaigns/:id" element={<ProjectDetailsPage />} />
-                  <Route path="/donate/:id" element={<DonateProjectPage />} />
+                  {/* Redirect /donate/:id to /projects/:id for backward compatibility */}
+                  <Route path="/donate/:id" element={<ProjectDetailsPage />} />
                   <Route path="/whitepaper" element={<WhitepaperPage />} />
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
-                <Route path="/faq" element={<FAQPage />} />
-                <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-                <Route path="/terms-of-service" element={<TermsOfServicePage />} />
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-            </main>
-            <Footer />
-          </div>
+                  <Route path="/admin/create-campaign" element={<CreateCampaignPage />} />
+                  <Route path="/faq" element={<FAQPage />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                  <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </main>
+              <Footer />
+            </div>
           </Router>
         </ProviderContextProvider>
-        </AuthProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
