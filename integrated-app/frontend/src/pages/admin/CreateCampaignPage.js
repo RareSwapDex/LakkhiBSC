@@ -2352,20 +2352,20 @@ const CreateCampaignPage = () => {
             />
             
             <Form.Group className="mb-3">
-                  <Form.Label>Select Blockchain</Form.Label>
+                  <Form.Label>Blockchain Network</Form.Label>
                   <div className="d-flex flex-wrap gap-2">
                     {blockchainChains.map(chain => (
                       <Card 
                         key={chain.id}
                         className={`blockchain-selector-card ${formData.basics.blockchainChain === chain.id ? 'selected' : ''}`}
                         style={{
-                          cursor: 'pointer',
+                          cursor: 'default',
                           minWidth: '120px',
                           transition: 'all 0.2s',
                           border: formData.basics.blockchainChain === chain.id ? '2px solid #007bff' : '1px solid #dee2e6',
-                          backgroundColor: formData.basics.blockchainChain === chain.id ? '#f0f7ff' : 'white'
+                          backgroundColor: formData.basics.blockchainChain === chain.id ? '#f0f7ff' : 'white',
+                          opacity: formData.basics.blockchainChain === chain.id ? 1 : 0.5
                         }}
-                        onClick={() => handleInputChange('basics', 'blockchainChain', chain.id)}
                       >
                         <Card.Body className="text-center p-3">
                           <div className="fs-3 mb-2">
@@ -2378,10 +2378,53 @@ const CreateCampaignPage = () => {
                     ))}
                   </div>
                   <Form.Text className="text-muted mt-2">
-                    Select the blockchain network for deploying your campaign. Make sure your wallet is connected to the same network.
+                    The blockchain network will be automatically detected from your token address. Make sure your wallet is connected to the same network.
                 </Form.Text>
             </Form.Group>
+            
+            <Form.Group className="mb-3">
+              <Form.Label>Token Address*</Form.Label>
+                <Form.Control 
+                  type="text"
+                value={formData.basics.tokenAddress}
+                onChange={(e) => {
+                  handleInputChange('basics', 'tokenAddress', e.target.value);
+                  clearTokenInfo();
+                }}
+                onBlur={handleTokenBlur}
+                required
+                placeholder="0x... or ENS name"
+                isInvalid={fieldErrors['basics.tokenAddress']}
+                />
+              <Form.Text className="text-muted mt-2">
+                Enter the token address you want to use for this campaign.
+                </Form.Text>
+              {fieldErrors['basics.tokenAddress'] && (
+                <Form.Control.Feedback type="invalid">
+                  {fieldErrors['basics.tokenAddress']}
+                </Form.Control.Feedback>
+              )}
+            </Form.Group>
 
+            <div className="alert alert-info">
+              <i className="bi bi-info-circle me-2"></i>
+              <strong>Important:</strong> The blockchain network will be automatically detected from your token address. Make sure your wallet is connected to the same network.
+            </div>
+            
+            {/* Blockchain information will be shown automatically after token validation */}
+            {tokenInfo && tokenInfo.blockchain && (
+              <Alert variant="info" className="mb-3">
+                <Row>
+                  <Col xs={12}>
+                    <strong>Blockchain Network:</strong> {tokenInfo.blockchain}
+                    <div className="text-muted mt-1 small">
+                      The blockchain is automatically detected from your token. Make sure your wallet is connected to the same network.
+                    </div>
+                  </Col>
+                </Row>
+              </Alert>
+            )}
+            
                 <FormField
                   label="Brief Description"
                 as="textarea"

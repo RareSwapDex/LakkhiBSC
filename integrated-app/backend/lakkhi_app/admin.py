@@ -5,7 +5,7 @@ from django.urls import path
 from django.shortcuts import redirect
 from django.contrib import messages
 from web3 import Web3
-from .web3_helper_functions import get_staking_contract, deploy_staking_contract
+from .web3_helper_functions import get_staking_contract
 
 @admin.register(Release)
 class ReleaseAdmin(admin.ModelAdmin):
@@ -154,67 +154,10 @@ class CampaignAdmin(admin.ModelAdmin):
                 self.message_user(request, f'Error creating release: {str(e)}', level=messages.ERROR)
                 return redirect('admin:lakkhi_app_campaign_changelist')
         
-        return redirect('admin:lakkhi_app_campaign_changelist')
-    
-    actions = ['approve_campaigns']
+        return redirect('admin:lakkhi_app_campaign_changelist') 
     
     def contract_owner_display(self, obj):
         if obj.contract_owner:
             return f"{obj.contract_owner[:6]}...{obj.contract_owner[-4:]}"
         return "-"
-    contract_owner_display.short_description = "Contract Owner"
-    
-    def approve_campaigns(self, request, queryset):
-        """
-        Approves selected campaigns and deploys their staking contracts.
-        Only admin users can approve campaigns.
-        """
-        from .web3_helper_functions import deploy_staking_contract
-        
-        for campaign in queryset:
-            # Skip campaigns that are not in draft status
-            if campaign.status != 'draft':
-                self.message_user(
-                    request, 
-                    f'Campaign "{campaign.title}" is already {campaign.status}, skipping.', 
-                    level=messages.WARNING
-                )
-                continue
-                
-            # Deploy the staking contract
-            try:
-                # Assuming contract_owner contains the wallet address that will deploy the contract
-                # and that the wallet key would be accessible in a production system
-                # For this implementation, we're simulating the deployment response
-                deployment_result = deploy_staking_contract(
-                    project_name=campaign.title,
-                    project_target=float(campaign.fund_amount),
-                    project_owner=campaign.contract_owner,
-                    token_address=campaign.token_address,
-                    wallet_key="WALLET_KEY_WOULD_BE_SECURED_IN_PRODUCTION"  # This is a placeholder
-                )
-                
-                if deployment_result['success']:
-                    # Update campaign with contract address and change status to active
-                    campaign.contract_address = deployment_result['contract_address']
-                    campaign.status = 'active'
-                    campaign.save()
-                    
-                    self.message_user(
-                        request,
-                        f'Campaign "{campaign.title}" approved and contract deployed at {campaign.contract_address}',
-                        level=messages.SUCCESS
-                    )
-                else:
-                    self.message_user(
-                        request,
-                        f'Error deploying contract for "{campaign.title}": {deployment_result["message"]}',
-                        level=messages.ERROR
-                    )
-            except Exception as e:
-                self.message_user(
-                    request,
-                    f'Error processing campaign "{campaign.title}": {str(e)}',
-                    level=messages.ERROR
-                )
-    approve_campaigns.short_description = "Approve and deploy contracts for selected campaigns" 
+    contract_owner_display.short_description = "Contract Owner" 

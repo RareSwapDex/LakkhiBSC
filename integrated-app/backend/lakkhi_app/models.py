@@ -347,10 +347,10 @@ class Campaign(models.Model):
     twitter = models.CharField(max_length=50, null=True, blank=True)
     telegram = models.CharField(max_length=50, null=True, blank=True)
     discord = models.CharField(max_length=50, null=True, blank=True)
-    
+
     def __str__(self):
         return self.title
-    
+
     @property
     def total_raised(self):
         return sum(contribution.amount for contribution in self.contributions.all())
@@ -458,7 +458,7 @@ class Comment(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user.username} - {self.campaign.title}"
+        return f"{self.user.username} - {self.campaign.title}" 
 
 
 class Contribution(models.Model):

@@ -6,6 +6,12 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 contract CampaignContract is Ownable, Pausable {
+    // Token name could be stored here for reference purposes:
+    // string public tokenName; // e.g. "USD Coin"
+    
+    // Campaign ID could be stored here to link on-chain contract with off-chain database:
+    // string public campaignId; // e.g. "c7f9e52a-4b2f-48c6-86a5-89c32c5848a9"
+    
     IERC20 public token;
     address public campaignOwner;
     uint256 public totalDeposits;
@@ -109,7 +115,9 @@ contract CampaignContract is Ownable, Pausable {
         
         require(token.transfer(campaignOwner, amount), "Transfer failed");
         
-        if (milestone.checkCompletion()) {
+        // Check if milestone is now completed
+        if (milestone.releasedAmount >= milestone.targetAmount) {
+            milestone.completed = true;
             emit MilestoneCompleted(milestoneId, amount);
         }
     }
