@@ -26,7 +26,7 @@ const CAMPAIGN_ABI = [
     "inputs": [
       {"name": "amount", "type": "uint256"}
     ],
-    "name": "donate",
+    "name": "stake",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -47,22 +47,58 @@ const CAMPAIGN_ABI = [
   },
   {
     "inputs": [],
-    "name": "getTargetAmount",
+    "name": "targetAmount",
     "outputs": [{"name": "", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "getBeneficiary",
+    "name": "beneficiary",
     "outputs": [{"name": "", "type": "address"}],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "getDonators",
-    "outputs": [{"name": "", "type": "address[]"}],
+    "name": "token",
+    "outputs": [{"name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+];
+
+// ERC20 ABI for token approvals
+const ERC20_ABI = [
+  {
+    "constant": false,
+    "inputs": [
+      {"name": "_spender", "type": "address"},
+      {"name": "_value", "type": "uint256"}
+    ],
+    "name": "approve",
+    "outputs": [{"name": "", "type": "bool"}],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {"name": "_owner", "type": "address"},
+      {"name": "_spender", "type": "address"}
+    ],
+    "name": "allowance",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [{"name": "_owner", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"name": "balance", "type": "uint256"}],
     "stateMutability": "view",
     "type": "function"
   }
@@ -372,20 +408,77 @@ export const ProviderContextProvider = ({ children }) => {
   };
   
   // Donate to a project - This follows RareFnd's pattern
-  const donateToProject = async (contractAddress, amount) => {
+  const donateToProject = async (contractAddress, amount, projectChain) => {
     if (!web3 || !account) {
       throw new Error('Wallet not connected');
     }
     
+    // Validate that we're on the correct chain
+    if (projectChain && chainId) {
+      const chainMap = {
+        'Ethereum': '0x1',
+        'BSC': '0x38',
+        'Base': '0x8453'
+      };
+      
+      const expectedChainId = chainMap[projectChain];
+      
+      if (expectedChainId && expectedChainId !== chainId) {
+        throw new Error(`Please switch to ${projectChain} network to donate. Current network does not match the project's blockchain.`);
+      }
+    }
+    
     try {
-      // Create contract instance
+      // Create campaign contract instance
       const campaignContract = new web3.eth.Contract(CAMPAIGN_ABI, contractAddress);
       
       // Convert amount to wei
       const amountWei = web3.utils.toWei(amount.toString(), 'ether');
       
-      // Prepare transaction
-      const tx = campaignContract.methods.donate(amountWei);
+      // Get token address from contract
+      const tokenAddress = await campaignContract.methods.token().call();
+      
+      if (!tokenAddress) {
+        throw new Error('Could not determine token address from contract');
+      }
+      
+      console.log(`Donating ${amount} tokens to project at ${contractAddress}`);
+      console.log(`Project token address: ${tokenAddress}`);
+      
+      // Step 1: Create token contract instance
+      const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+      
+      // Step 2: Check token balance
+      const balance = await tokenContract.methods.balanceOf(account).call();
+      const balanceInEther = web3.utils.fromWei(balance, 'ether');
+      
+      if (parseFloat(balanceInEther) < parseFloat(amount)) {
+        throw new Error(`Insufficient token balance. You have ${balanceInEther} tokens but trying to donate ${amount} tokens.`);
+      }
+      
+      console.log(`User has sufficient balance: ${balanceInEther} tokens`);
+      
+      // Step 3: Check allowance
+      const allowance = await tokenContract.methods.allowance(account, contractAddress).call();
+      
+      // Step 4: Approve tokens if necessary
+      if (BigInt(allowance) < BigInt(amountWei)) {
+        console.log('Approving tokens for spending...');
+        
+        const approveTx = await tokenContract.methods.approve(contractAddress, amountWei).send({
+          from: account
+        });
+        
+        console.log('Token approval successful:', approveTx.transactionHash);
+      } else {
+        console.log('Token allowance already sufficient');
+      }
+      
+      // Step 5: Stake tokens
+      console.log('Staking tokens...');
+      
+      // Prepare staking transaction
+      const tx = campaignContract.methods.stake(amountWei);
       
       // Estimate gas
       const gasEstimate = await tx.estimateGas({ from: account });
@@ -395,6 +488,8 @@ export const ProviderContextProvider = ({ children }) => {
         from: account,
         gas: Math.floor(gasEstimate * 1.2) // Add 20% buffer
       });
+      
+      console.log('Staking transaction successful:', receipt.transactionHash);
       
       return {
         success: true,

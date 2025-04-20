@@ -33,7 +33,7 @@ const ProjectDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { account, isConnected, connectWallet, donateToProject, isInitialized } = useProvider();
+  const { account, isConnected, connectWallet, donateToProject, isInitialized, switchChain } = useProvider();
   
   const [project, setProject] = useState(null);
   const [incentives, setIncentives] = useState([]);
@@ -112,7 +112,8 @@ const ProjectDetailsPage = () => {
     setTokenDonationError(null);
     
     try {
-      const result = await donateToProject(project.contract_address, tokenDonationAmount);
+      // Pass project.chain as the third parameter
+      const result = await donateToProject(project.contract_address, tokenDonationAmount, project.chain);
       
       if (result.success) {
         setTokenDonationSuccess(true);
@@ -468,8 +469,37 @@ const ProjectDetailsPage = () => {
                         
                         {isConnected ? (
                           <>
-                            <Alert variant="info" className="mb-3">
-                              <small>Connected Wallet: {account}</small>
+                            <Alert variant="info" className="mb-3 d-flex justify-content-between align-items-center">
+                              <div>
+                                <small>Connected Wallet: {account?.slice(0, 6)}...{account?.slice(-4)}</small>
+                                <div className="mt-1">
+                                  <small>
+                                    Required Network: <Badge bg="primary">{project.chain || 'BSC'}</Badge>
+                                  </small>
+                                </div>
+                              </div>
+                              {project.chain && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline-light"
+                                  onClick={() => {
+                                    const chainMap = {
+                                      'Ethereum': '0x1',
+                                      'BSC': '0x38',
+                                      'Base': '0x8453'
+                                    };
+                                    
+                                    const targetChainId = chainMap[project.chain];
+                                    if (targetChainId) {
+                                      switchChain(targetChainId).catch(err => {
+                                        setTokenDonationError(`Failed to switch network: ${err.message}`);
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Switch Network
+                                </Button>
+                              )}
                             </Alert>
                             
                             <Form onSubmit={handleTokenDonation}>
@@ -484,6 +514,9 @@ const ProjectDetailsPage = () => {
                                   min="0.000001"
                                   step="0.000001"
                                 />
+                                <Form.Text className="text-muted">
+                                  You'll need to approve tokens before staking. This requires two transactions.
+                                </Form.Text>
                               </Form.Group>
                               
                               <div className="d-grid gap-2">
