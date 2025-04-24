@@ -17,6 +17,8 @@
     "ALLOWED_HOSTS": ".vercel.app",
     "CORS_ALLOW_ALL_ORIGINS": "True",
     "DATABASE_URL": "sqlite://:memory:",
-    "BSC_RPC_URL": "https://bsc-dataseed1.binance.org/"
+    "BSC_RPC_URL": "https://bsc-dataseed1.binance.org/",
+    "ETHEREUM_RPC_URL": "https://ethereum.publicnode.com",
+    "BASE_RPC_URL": "https://mainnet.base.org"
   }
 } 

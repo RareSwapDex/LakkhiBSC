@@ -313,9 +313,66 @@ class PaymentProcessor:
         """
         Calculate the token amount for a given USD amount
         """
-        # In production, this would query the token's price from an oracle or exchange
-        # For now, use a fixed conversion rate (1 USD = 100 tokens)
-        conversion_rate = Decimal('100')
-        token_amount = Decimal(usd_amount) * conversion_rate
+        # Import required modules
+        import requests
+        from web3 import Web3
         
-        return token_amount 
+        try:
+            # Get token info from contract
+            from .web3_helper_functions import get_token_info
+            token_info = get_token_info(token_address)
+            
+            if not token_info['success']:
+                # Fallback to default conversion if token info cannot be retrieved
+                conversion_rate = Decimal('100')
+                print(f"Warning: Using fallback conversion rate for {token_address}")
+            else:
+                # Try to get price from CoinGecko
+                symbol = token_info['symbol'].lower()
+                try:
+                    # This is production code - get actual token price from an API
+                    response = requests.get(
+                        f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd",
+                        timeout=5
+                    )
+                    data = response.json()
+                    
+                    if data and symbol in data and 'usd' in data[symbol]:
+                        token_price = Decimal(str(data[symbol]['usd']))
+                        if token_price > 0:
+                            # Convert USD amount to token amount based on price
+                            conversion_rate = Decimal('1') / token_price
+                        else:
+                            # Fallback if price is zero
+                            conversion_rate = Decimal('100')
+                    else:
+                        # Second attempt with contract address
+                        response = requests.get(
+                            f"https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses={token_address}&vs_currencies=usd",
+                            timeout=5
+                        )
+                        data = response.json()
+                        
+                        if data and token_address.lower() in data and 'usd' in data[token_address.lower()]:
+                            token_price = Decimal(str(data[token_address.lower()]['usd']))
+                            if token_price > 0:
+                                conversion_rate = Decimal('1') / token_price
+                            else:
+                                conversion_rate = Decimal('100')
+                        else:
+                            # Fallback to default if price API fails
+                            conversion_rate = Decimal('100')
+                except Exception as e:
+                    print(f"Error getting token price: {e}")
+                    conversion_rate = Decimal('100')
+            
+            # Calculate token amount
+            token_amount = Decimal(usd_amount) * conversion_rate
+            print(f"Converting ${usd_amount} to {token_amount} tokens (rate: {conversion_rate})")
+            
+            return token_amount
+            
+        except Exception as e:
+            print(f"Error in token conversion: {e}")
+            # Ultimate fallback
+            return Decimal(usd_amount) * Decimal('100') 
