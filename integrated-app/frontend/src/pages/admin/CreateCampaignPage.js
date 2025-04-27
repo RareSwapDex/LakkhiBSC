@@ -19,6 +19,7 @@ import { FaPlus } from 'react-icons/fa';
 import { FaEthereum } from 'react-icons/fa';
 import { SiBinance } from 'react-icons/si';
 import { BsCoin } from 'react-icons/bs';
+import { v4 as uuidv4 } from 'uuid';
 
 const EXPLORER_URLS = {
   Ethereum: 'https://etherscan.io',
@@ -962,13 +963,18 @@ const CreateCampaignPage = () => {
   // Campaign categories
   const campaignCategories = [
     { id: '', name: 'Select a category' },
-    { id: 'defi', name: 'DeFi' },
-    { id: 'nft', name: 'NFT' },
-    { id: 'gaming', name: 'Gaming' },
+    { id: 'conservation', name: 'Conservation' },
+    { id: 'charity', name: 'Charity' },
+    { id: 'education', name: 'Education' },
     { id: 'metaverse', name: 'Metaverse' },
-    { id: 'dao', name: 'DAO' },
+    { id: 'dao', name: 'Community DAO' },
+    { id: 'ai', name: 'AI & Technology' },
+    { id: 'rwa', name: 'Real World Assets' },
+    { id: 'gamefi', name: 'GameFi' },
+    { id: 'defi', name: 'DeFi Protocol' },
+    { id: 'nft', name: 'NFT' },
     { id: 'infrastructure', name: 'Infrastructure' },
-    { id: 'social', name: 'Social' },
+    { id: 'social', name: 'Social Impact' },
     { id: 'other', name: 'Other' }
   ];
   
@@ -983,6 +989,129 @@ const CreateCampaignPage = () => {
     } else {
       // Default to BSC if blockchain info wasn't detected
       handleInputChange('basics', 'blockchainChain', 'BSC');
+    }
+
+    // Fetch and populate social links if we have valid token info
+    if (tokenInfo && tokenInfo.address) {
+      fetchTokenSocialLinks(tokenInfo.address, tokenInfo.blockchain)
+        .then(socialLinks => {
+          if (socialLinks) {
+            // Update social fields with fetched data
+            Object.keys(socialLinks).forEach(platform => {
+              if (socialLinks[platform]) {
+                handleSocialChange(platform, socialLinks[platform]);
+              }
+            });
+            console.log('Social links populated from token data');
+          }
+        })
+        .catch(error => {
+          console.warn('Error fetching token social links:', error);
+        });
+    }
+  };
+
+  // Function to fetch token social links from Dexscreener/Dextools
+  const fetchTokenSocialLinks = async (tokenAddress, blockchain) => {
+    try {
+      console.log(`Fetching social links for ${tokenAddress} on ${blockchain}`);
+      
+      // Try Dexscreener first (they have a clean API)
+      let socialLinks = await fetchDexscreenerSocials(tokenAddress, blockchain);
+      
+      // If Dexscreener didn't return social links, try Dextools
+      if (!socialLinks || Object.keys(socialLinks).filter(k => socialLinks[k]).length === 0) {
+        socialLinks = await fetchDextoolsSocials(tokenAddress, blockchain);
+      }
+      
+      return socialLinks;
+    } catch (error) {
+      console.error('Error fetching token social links:', error);
+      return null;
+    }
+  };
+
+  // Fetch social links from Dexscreener
+  const fetchDexscreenerSocials = async (tokenAddress, blockchain) => {
+    try {
+      // Convert blockchain name to Dexscreener chain ID
+      const chainId = blockchain === 'BSC' ? 'bsc' : 
+                     blockchain === 'Ethereum' ? 'ethereum' : 
+                     blockchain === 'Base' ? 'base' : 'ethereum';
+      
+      // Call Dexscreener API (via backend proxy to avoid CORS issues)
+      const response = await axios.get(
+        `${process.env.REACT_APP_BASE_URL}/api/token/socials/?source=dexscreener&token_address=${tokenAddress}&blockchain=${chainId}`,
+        { 
+          withCredentials: true,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      // If backend proxy is not available, try direct API (may have CORS issues)
+      if (!response.data || !response.data.success) {
+        // Direct call to Dexscreener - note this might fail due to CORS
+        const dexscreenerUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+        const directResponse = await fetch(dexscreenerUrl);
+        const data = await directResponse.json();
+        
+        if (data && data.pairs && data.pairs.length > 0) {
+          const tokenData = data.pairs[0].baseToken;
+          return {
+            website: tokenData.website || '',
+            twitter: tokenData.twitter ? `https://twitter.com/${tokenData.twitter}` : '',
+            telegram: tokenData.telegram ? `https://t.me/${tokenData.telegram}` : '',
+            discord: '',
+            github: '',
+            linkedin: ''
+          };
+        }
+      } else if (response.data && response.data.socials) {
+        // Return socials from backend proxy
+        return response.data.socials;
+      }
+      
+      return {};
+    } catch (error) {
+      console.warn('Error fetching from Dexscreener:', error);
+      return {};
+    }
+  };
+
+  // Fetch social links from Dextools
+  const fetchDextoolsSocials = async (tokenAddress, blockchain) => {
+    try {
+      // Convert blockchain name to Dextools chain ID
+      const chainId = blockchain === 'BSC' ? '56' : 
+                     blockchain === 'Ethereum' ? '1' : 
+                     blockchain === 'Base' ? '8453' : '1';
+      
+      // Call Dextools API (via backend proxy to avoid CORS issues)
+      const response = await axios.get(
+        `${process.env.REACT_APP_BASE_URL}/api/token/socials/?source=dextools&token_address=${tokenAddress}&blockchain=${chainId}`,
+        { 
+          withCredentials: true,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.success && response.data.socials) {
+        return response.data.socials;
+      }
+      
+      // If backend proxy is not available, we can't easily call Dextools API directly
+      // as they typically require authentication
+
+      return {};
+    } catch (error) {
+      console.warn('Error fetching from Dextools:', error);
+      return {};
     }
   };
   
@@ -1817,175 +1946,541 @@ const CreateCampaignPage = () => {
   const [templateSectionCollapsed, setTemplateSectionCollapsed] = useState(false);
   const [selectedTemplateData, setSelectedTemplateData] = useState(null);
   
+  // Add state to track if pre-filled fields have been reviewed
+  const [prefilledFieldsReviewed, setPrefilledFieldsReviewed] = useState({});
+  const [showPreviewRequiredAlert, setShowPreviewRequiredAlert] = useState(false);
+  
   // Enhance the function to handle template selection
   const handleTemplateSelection = (template) => {
-    // Allow template selection even without wallet connection
-    console.log("Template selected:", template.id);
-    
-    // Store selected template and collapse section
+    setShowTemplates(false);
     setSelectedTemplateData(template);
-    setTemplateSectionCollapsed(true);
-  
-    // Create a new structured object that matches our form data structure
-    const templateFormData = {
+    
+    // Track which fields were pre-filled by the template
+    const prefilledTracker = {};
+
+    // Build updatedFormData with all sections
+    let updatedFormData = {
+      ...formData,
       basics: {
-        projectTitle: template.id === 'custom' ? '' : `${template.title} Expansion Campaign`,
-        projectDescription: template.description,
-        projectFundAmount: template.goal || formData.basics.projectFundAmount,
-        projectDeadlineDate: template.duration.toString(),
+        ...formData.basics,
+        projectTitle: `${template.title} ${template.id !== 'custom' ? 'Campaign' : 'Project'}`,
+        projectDescription: template.description || '',
+        projectDeadlineDate: template.duration || '30',
+        projectFundAmount: template.goal || '',
         category: template.categories[0] || '',
-        tags: template.categories || []
+        tags: template.categories || [],
+        activateImmediately: true,
+        enableAutoRefund: true,
+        minContribution: '0.01'
       },
       story: {
-        projectStory: template.detailedDescription || '',
-        projectGoals: template.id === 'custom' ? '' : 
-          `Our ${template.title.toLowerCase()} is already live and actively trading. ${tokenUtilityContent[template.id] || ''} This funding will help us implement features that were beyond our initial scope and accelerate our roadmap.`,
-        projectRisks: template.id === 'custom' ? '' : 
-          'Our team has already demonstrated capability by launching and maintaining our token in the market. The main risks include market volatility and technological challenges in implementing new features, but our proven track record shows we can overcome these obstacles.',
-        projectTimeline: template.id === 'custom' ? '' : 
-          `We will run this fundraising campaign for ${template.duration} days. Implementation of the new features will begin immediately after funding is secured, with regular updates to our community throughout the development process.`,
-        projectBudget: template.id === 'custom' ? '' : 
-          `Our fundraising goal of $${template.goal} will be allocated as follows: ${tokenDistributionContent[template.id] || ''}`
-      },
-      milestones: [
-        {
-          title: template.id === 'custom' ? 'Initial Phase' : `${template.title} - Phase 1: Enhancement`,
-          description: template.id === 'custom' ? 'Initial development phase' : 
-            getPhaseOneDescription(template.id),
-          targetAmount: template.id === 'custom' ? '' : (parseFloat(template.goal) * 0.3).toString(),
-          dueDate: ''
-        },
-        {
-          title: template.id === 'custom' ? '' : `${template.title} - Phase 2: Implementation`,
-          description: template.id === 'custom' ? '' : 
-            getPhaseTwoDescription(template.id),
-          targetAmount: template.id === 'custom' ? '' : (parseFloat(template.goal) * 0.4).toString(),
-          dueDate: ''
-        },
-        {
-          title: template.id === 'custom' ? '' : `${template.title} - Phase 3: Scaling`,
-          description: template.id === 'custom' ? '' : 
-            getPhaseThreeDescription(template.id),
-          targetAmount: template.id === 'custom' ? '' : (parseFloat(template.goal) * 0.3).toString(),
-          dueDate: ''
-        }
-      ]
-    };
-    
-    // Helper functions for milestone descriptions for existing projects
-    function getPhaseOneDescription(templateId) {
-      switch(templateId) {
-        case 'conservation': 
-          return 'Strengthen our existing conservation partnerships and begin implementing new environmental project selection tools.';
-        case 'education':
-          return 'Expand our content creation tools and begin development of advanced learning modules.';
-        case 'metaverse':
-          return 'Optimize existing infrastructure and begin development of new virtual land expansion.';
-        case 'cto':
-          return 'Complete comprehensive code audit and implement core improvements identified by the community.';
-        case 'ai':
-          return 'Upgrade existing computing infrastructure and begin development of new AI model capabilities.';
-        case 'rwa':
-          return 'Complete legal framework updates and begin due diligence on new asset acquisitions.';
-        case 'gamefi':
-          return 'Implement economic balancing improvements and begin development of new game features.';
-        case 'defi':
-          return 'Complete additional security audits and begin development of new financial products.';
-        default:
-          return 'Begin enhancements to our existing product and infrastructure.';
-      }
-    }
-    
-    function getPhaseTwoDescription(templateId) {
-      switch(templateId) {
-        case 'conservation': 
-          return 'Launch improved impact tracking system and implement new token holder benefits for active conservation supporters.';
-        case 'education':
-          return 'Release enhanced token reward system for content creators and deploy initial phase of platform improvements.';
-        case 'metaverse':
-          return 'Launch new virtual space expansion and implement enhanced user experience features.';
-        case 'cto':
-          return 'Deploy updated token utility features and implement new governance mechanisms requested by the community.';
-        case 'ai':
-          return 'Launch beta access to new AI models and implement improved token utility for computation access.';
-        case 'rwa':
-          return 'Acquire new assets for the portfolio and implement enhanced token holder benefits.';
-        case 'gamefi':
-          return 'Release new gameplay features and implement enhanced tournament system with token rewards.';
-        case 'defi':
-          return 'Deploy new financial products and implement enhanced yield optimization strategies.';
-        default:
-          return 'Implement the core new features and enhancements to our existing product.';
-      }
-    }
-    
-    function getPhaseThreeDescription(templateId) {
-      switch(templateId) {
-        case 'conservation': 
-          return 'Scale our conservation impact with new partnership integrations and launch enhanced token holder governance features.';
-        case 'education':
-          return 'Launch cross-platform integration and implement enhanced credential verification system.';
-        case 'metaverse':
-          return 'Release new creator tools and implement cross-platform integration with other virtual worlds.';
-        case 'cto':
-          return 'Launch comprehensive marketing campaign for the revitalized project and implement long-term sustainability plan.';
-        case 'ai':
-          return 'Release full access to new AI models and implement enhanced revenue sharing for token holders.';
-        case 'rwa':
-          return 'Launch enhanced portfolio management features and implement additional asset classes.';
-        case 'gamefi':
-          return 'Launch integration with other blockchain games and implement enhanced token utility across the ecosystem.';
-        case 'defi':
-          return 'Implement cross-chain capabilities and launch institutional-grade features for larger participants.';
-        default:
-          return 'Scale our solution with additional features and optimizations based on user feedback.';
-      }
-    }
+        ...formData.story,
+        projectStory: template.id === 'custom' ? '' : `${template.detailedDescription || ''}
 
-    // Merge template data with existing form data
-    setFormData(prevData => {
-      // Create a deep copy of the current form data
-      const newData = JSON.parse(JSON.stringify(prevData));
-      
-      // Update basics
-      if (templateFormData.basics) {
-        Object.keys(templateFormData.basics).forEach(field => {
-          // Don't overwrite token address, blockchain, contract owner
-          if (!['tokenAddress', 'contractOwnerAddress', 'blockchainChain', 'walletAddress'].includes(field)) {
-            newData.basics[field] = templateFormData.basics[field];
+${getDetailedUseCase(template.id)}
+
+Our ${template.title.toLowerCase()} is already live and actively trading. ${getRaisingReason(template.id)}`,
+        projectGoals: template.id === 'custom' ? '' : getProjectGoals(template.id),
+        projectRisks: template.id === 'custom' ? '' : getProjectRisks(template.id),
+        projectTimeline: template.id === 'custom' ? '' : getProjectTimeline(template.id),
+        projectBudget: template.id === 'custom' ? '' : getProjectBudget(template.id, template.goal)
+      },
+      // Pre-fill team section with placeholder members
+      team: {
+        members: [
+          {
+            name: '', // Leave blank for user to fill
+            role: getTemplateRoles(template.id)[0] || 'Project Lead',
+            bio: `Experienced professional with background in ${template.categories[0] || 'blockchain'} projects. Has successfully led multiple initiatives in this space.`,
+            social: ''
+          },
+          {
+            name: '',
+            role: getTemplateRoles(template.id)[1] || 'Technical Lead',
+            bio: `Skilled developer with expertise in smart contract development and implementation. Has worked on multiple ${template.categories[0] || 'blockchain'} projects.`,
+            social: ''
           }
-        });
+        ]
+      },
+      // Pre-fill social links with placeholder URLs
+      social: {
+        website: `https://example-${template.id}.com`,
+        twitter: `https://twitter.com/example_${template.id}`,
+        telegram: `https://t.me/example_${template.id}`,
+        discord: `https://discord.gg/example_${template.id}`,
+        github: `https://github.com/example_${template.id}`,
+        linkedin: `https://linkedin.com/company/example_${template.id}`
+      },
+      // Pre-fill updates section
+      updates: {
+        scheduleCommitment: getTemplateUpdateFrequency(template.id),
+      },
+      // Pre-check legal agreements
+      legal: {
+        termsAccepted: true,
+        privacyAccepted: true,
+        refundPolicy: getTemplateRefundPolicy(template.id),
+        kycCompleted: false
+      },
+      // Add rewards based on template
+      rewards: {
+        projectRewards: getTemplateRewards(template.id, template.goal)
       }
-      
-      // Update story
-      if (templateFormData.story) {
-        Object.keys(templateFormData.story).forEach(field => {
-          newData.story[field] = templateFormData.story[field];
-        });
-      }
-      
-      // Update milestones if they exist in the template
-      if (templateFormData.milestones && templateFormData.milestones.length > 0) {
-        // Only update for non-custom templates
-        if (template.id !== 'custom') {
-          newData.milestones = templateFormData.milestones;
-        }
-      }
-      
-      return newData;
+    };
+
+    // Add realistic milestones based on the template
+    updatedFormData.milestones = getMilestones(template);
+    
+    // Mark all pre-filled fields as needing review
+    Object.keys(updatedFormData).forEach(section => {
+      prefilledTracker[section] = true;
     });
     
-    // Immediately save to localStorage to persist the template selection
-    persistForm();
+    setPrefilledFieldsReviewed(prefilledTracker);
+    setFormData(updatedFormData);
     
-    // Show success message
-    setError(`${template.title} template applied! Connect your wallet to continue creating the campaign.`);
+    // Always enable rewards for templates
+    setIncludeIncentives(true);
     
-    // Clear the error message after 5 seconds
+    // Auto-scroll to the form after template selection
     setTimeout(() => {
-      setError(null);
-    }, 5000);
+      document.getElementById('campaign-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
   };
+
+  // Get detailed use case based on template type
+  function getDetailedUseCase(templateId) {
+    switch (templateId) {
+      case 'conservation':
+        return "Our conservation token is already established and actively trading. We've built a community of environmentally-conscious supporters, and now we're ready for our next major initiative. This fundraising campaign will allow us to acquire and protect critical wildlife habitats that are currently threatened by development, with all conservation efforts tracked transparently on the blockchain.";
+      case 'charity':
+        return "Our charity token has created a foundation for supporting causes we care about. With this focused fundraising campaign, we'll establish a comprehensive animal welfare program at five local shelters that are currently operating beyond capacity. Funds will provide critical medical care for abandoned animals, facility upgrades for better housing conditions, and sustainable operational funding.";
+      case 'education':
+        return "Our education token has successfully launched with over 1,000 community members. This fundraising will establish a scholarship fund for 50 underprivileged students to access blockchain development courses, build an interactive learning platform with verifiable credentials, and create specialized content for emerging Web3 technologies and applications.";
+      case 'metaverse':
+        return "Our metaverse token powers an established virtual world with growing user engagement. This fundraising will expand our environment with three new thematic districts (Cyberpunk City, Fantasy Realm, and Education Campus), upgrade our graphics engine for more immersive experiences, and develop advanced tools for community content creation.";
+      case 'cto':
+        return "Our community successfully took over this project after the original team departed six months ago. With this focused fundraising, we'll complete a comprehensive security audit to identify vulnerabilities, implement the remaining roadmap features promised but never delivered, and establish a sustainable development fund managed by decentralized governance.";
+      case 'ai':
+        return "Our AI & Technology token has built foundational models that show promising results. This fundraising will scale our computational infrastructure, develop specialized AI applications for financial market prediction and healthcare diagnostics, and create an accessible API allowing token holders to leverage our AI capabilities for their own projects.";
+      case 'rwa':
+        return "Our Real World Assets token has successfully tokenized its first properties. This fundraising will acquire a diversified portfolio of five commercial real estate properties in high-growth markets projected to yield 8-12% annually, with all income transparently distributed to token holders through our existing dividend system.";
+      case 'gamefi':
+        return "Our GameFi token has established a core gaming experience with active players. This fundraising will develop our mobile gaming platform to reach millions of new users, create an enhanced NFT marketplace with minimal fees, and establish a monthly tournament series with substantial token-based prize pools to drive player engagement.";
+      case 'defi':
+        return "Our DeFi protocol has proven its core functionality with growing TVL. This fundraising will expand our protocol to five additional blockchains to maximize accessibility and liquidity, implement advanced yield optimization strategies that boost returns by 20-40%, and enhance security through multiple independent audits and a comprehensive bug bounty program.";
+      default:
+        return "Our token project has established its foundation and is actively trading. With this fundraising campaign, we'll accelerate development of our most requested features, expand our team with specialized talent, and implement the next phase of our community-approved roadmap.";
+    }
+  }
+
+  // Get specific reason for raising funds
+  function getRaisingReason(templateId) {
+    switch (templateId) {
+      case 'conservation':
+        return "We're raising funds to purchase and protect 2,000 acres of critical rainforest habitat that is slated for development, establishing a permanent nature reserve with blockchain-verified carbon credits that provide ongoing funding for conservation management.";
+      case 'charity':
+        return "We're raising funds to renovate five local animal shelters that are operating beyond capacity, providing modern medical facilities for injured animals, comfortable housing for extended stays, and a comprehensive adoption program with ongoing support services.";
+      case 'education':
+        return "We're raising funds to launch a comprehensive Web3 developer scholarship program that will provide full training, mentorship, and job placement services for 50 students from underrepresented communities, with all certification credentials stored on-chain for verification.";
+      case 'metaverse':
+        return "We're raising funds to build three new specialized districts in our virtual world that will double our user capacity, introduce advanced social features requested by our community, and launch creator tools that enable users to build and monetize their own metaverse experiences.";
+      case 'cto':
+        return "We're raising funds to audit and secure the project codebase, implement the cross-chain functionality promised in the original roadmap, and establish a sustainable treasury management system governed by token holders through transparent on-chain voting.";
+      case 'ai':
+        return "We're raising funds to deploy specialized financial prediction models that have demonstrated 76% accuracy in testing, create a developer-friendly API for third-party applications, and expand our computing infrastructure to handle 10x the current processing load.";
+      case 'rwa':
+        return "We're raising funds to acquire five high-yield commercial properties in emerging tech hubs with projected annual returns of 8-12%, establish an automated dividend distribution system for token holders, and develop a secondary market for enhanced token liquidity.";
+      case 'gamefi':
+        return "We're raising funds to launch our mobile gaming platform that will expand our player base to over 100,000 active users, implement our play-to-earn mechanics with sustainable tokenomics, and establish a competitive esports league with monthly tournaments and substantial prize pools.";
+      case 'defi':
+        return "We're raising funds to expand our protocol to five additional blockchains including Ethereum, Arbitrum, and Polygon, optimize gas efficiency by up to 40%, and implement advanced automated yield strategies that have demonstrated 15-25% higher returns in testing.";
+      default:
+        return "We're raising funds to accelerate our project's development roadmap, implement the most requested community features, and expand our team with specialized talent to ensure sustainable long-term growth.";
+    }
+  }
+
+  // Get specific project goals
+  function getProjectGoals(templateId) {
+    switch (templateId) {
+      case 'conservation':
+        return "1. Acquire and protect at least 1,000 acres of critical habitat for endangered species\n2. Deploy blockchain-based tracking systems to monitor conservation impact with full transparency\n3. Engage local communities through education and sustainable economic opportunities\n4. Establish a decentralized grant system for smaller conservation initiatives globally";
+      case 'charity':
+        return "1. Construct or renovate facilities for at least 5 animal shelters in high-need areas\n2. Provide medical care, food, and supplies for over 10,000 animals annually\n3. Implement a blockchain verification system for all donations to ensure transparency\n4. Create a sustainable funding model through token staking rewards";
+      case 'education':
+        return "1. Develop a comprehensive curriculum covering Web3 technologies, tokenomics, and blockchain development\n2. Award at least 100 scholarships to students from underrepresented backgrounds\n3. Build a decentralized credential verification system using our token network\n4. Establish partnerships with at least 10 educational institutions for wider adoption";
+      case 'metaverse':
+        return "1. Expand our virtual world with 5 new thematic districts based on community preferences\n2. Enhance graphics and physics engines to support more immersive experiences\n3. Implement cross-platform compatibility for mobile, desktop, and VR devices\n4. Develop advanced creator tools for community-built environments and assets";
+      case 'cto':
+        return "1. Complete comprehensive security audits of all existing smart contracts\n2. Implement all roadmap features promised by the original team but never delivered\n3. Establish a transparent governance system for all future project decisions\n4. Rebuild community trust through consistent communication and development milestones";
+      case 'ai':
+        return "1. Expand computational infrastructure to handle 10x current processing capacity\n2. Develop specialized AI models for financial prediction, content creation, and data analysis\n3. Create an accessible API for token holders to leverage our AI capabilities\n4. Establish partnerships with at least 5 industry leaders for real-world AI applications";
+      case 'rwa':
+        return "1. Acquire a diversified portfolio of premium commercial real estate in emerging markets\n2. Tokenize rare art collections with fractional ownership capabilities\n3. Implement quarterly dividend distributions from asset-generated revenue\n4. Develop a secondary market for enhanced token liquidity and price discovery";
+      case 'gamefi':
+        return "1. Launch our mobile gaming platform on iOS and Android to reach millions of new players\n2. Develop a robust in-game NFT marketplace with low transaction fees\n3. Establish a competitive esports league with substantial token-based prizes\n4. Implement cross-game asset compatibility within our gaming ecosystem";
+      case 'defi':
+        return "1. Deploy our protocol on 5 additional blockchains to enhance access and liquidity\n2. Implement advanced security measures including bug bounties and ongoing audits\n3. Develop innovative yield optimization strategies to maximize returns\n4. Create educational resources to broaden understanding of our financial products";
+      default:
+        return "1. Accelerate development of core features based on community feedback\n2. Expand our team with specialized talent in key technical areas\n3. Enhance user experience through improved interfaces and documentation\n4. Establish strategic partnerships to expand our ecosystem reach";
+    }
+  }
+
+  // Get specific project risks
+  function getProjectRisks(templateId) {
+    switch (templateId) {
+      case 'conservation':
+        return "1. Environmental regulations may change, affecting our conservation strategies\n2. Natural disasters could impact protected areas, requiring additional resources\n3. Local political changes may affect land purchase agreements\n4. Community adoption of conservation practices may face cultural barriers";
+      case 'charity':
+        return "1. Regulatory changes in animal welfare may require operational adjustments\n2. Unexpected increases in animal intake could strain resources\n3. Seasonal variations in donations might affect cash flow\n4. Partnerships with existing shelters may face integration challenges";
+      case 'education':
+        return "1. Rapid evolution of blockchain technology may require frequent curriculum updates\n2. Competition from traditional educational institutions could limit adoption\n3. Credential recognition by employers may develop slower than anticipated\n4. User retention in online learning environments presents ongoing challenges";
+      case 'metaverse':
+        return "1. Technological limitations may affect the implementation of advanced features\n2. Competition from established metaverse platforms could impact user acquisition\n3. Regulatory developments regarding virtual property may affect our model\n4. User experience across different devices may vary, affecting adoption";
+      case 'cto':
+        return "1. Unknown technical debt inherited from the previous team may cause delays\n2. Community consensus on priorities may be difficult to achieve\n3. Token price volatility could affect treasury management\n4. Rebuilding market confidence after previous team departure requires time";
+      case 'ai':
+        return "1. Computational costs may exceed projections as AI models grow more complex\n2. Talent acquisition in competitive AI markets presents challenges\n3. Regulatory frameworks for AI applications continue to evolve\n4. Ethical considerations in AI development require ongoing attention";
+      case 'rwa':
+        return "1. Real estate market fluctuations may affect asset valuations\n2. Regulatory changes regarding tokenized assets could impact operations\n3. Property management expenses may vary from projections\n4. Liquidity of tokenized assets may be limited in certain market conditions";
+      case 'gamefi':
+        return "1. Player acquisition costs in competitive gaming markets may increase\n2. In-game economy balancing requires ongoing refinement\n3. Mobile app store policies regarding crypto integration may change\n4. Esports regulation continues to evolve in different jurisdictions";
+      case 'defi':
+        return "1. Smart contract vulnerabilities present ongoing security challenges\n2. Regulatory changes in different jurisdictions may affect protocol features\n3. Market volatility can impact liquidity and collateralization ratios\n4. Competition from other DeFi protocols may affect market share";
+      default:
+        return "1. Market volatility may affect project treasury and development timelines\n2. Technical challenges could delay feature implementation\n3. Regulatory changes in the blockchain space present ongoing uncertainty\n4. Competition for user attention in a crowded market requires constant innovation";
+    }
+  }
+
+  // Get project timeline
+  function getProjectTimeline(templateId) {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const currentDate = new Date();
+    const month1 = months[currentDate.getMonth()];
+    const month2 = months[(currentDate.getMonth() + 1) % 12];
+    const month3 = months[(currentDate.getMonth() + 2) % 12];
+    const month4 = months[(currentDate.getMonth() + 3) % 12];
+    
+    switch (templateId) {
+      case 'conservation':
+        return `${month1}: Identify and evaluate candidate conservation areas\n${month2}: Begin land acquisition process and community engagement\n${month3}: Develop conservation management plans and monitoring systems\n${month4}: Launch initial conservation activities and impact tracking`;
+      case 'charity':
+        return `${month1}: Finalize partnerships with animal welfare organizations\n${month2}: Begin facility improvements and supply procurement\n${month3}: Implement blockchain tracking system for transparency\n${month4}: Launch full operations with comprehensive care services`;
+      case 'education':
+        return `${month1}: Develop curriculum outline and learning objectives\n${month2}: Create content for initial courses and recruit educators\n${month3}: Build credential verification system and testing platform\n${month4}: Launch educational platform with first cohort of students`;
+      case 'metaverse':
+        return `${month1}: Design and plan new virtual districts based on community input\n${month2}: Develop enhanced graphics engine and infrastructure upgrades\n${month3}: Beta test new features with selected community members\n${month4}: Full launch of expanded metaverse environment`;
+      case 'cto':
+        return `${month1}: Complete security audits and technical assessment\n${month2}: Implement critical fixes and begin roadmap feature development\n${month3}: Launch enhanced governance system for community decisions\n${month4}: Release first major update under community leadership`;
+      case 'ai':
+        return `${month1}: Expand computational infrastructure and data processing capabilities\n${month2}: Develop and train specialized AI models for key applications\n${month3}: Create API access system and documentation for token holders\n${month4}: Launch partner integrations and real-world applications`;
+      case 'rwa':
+        return `${month1}: Identify and evaluate target properties for acquisition\n${month2}: Complete legal framework for asset tokenization and ownership\n${month3}: Finalize initial property acquisitions and onboarding\n${month4}: Launch dividend distribution system and secondary market`;
+      case 'gamefi':
+        return `${month1}: Develop mobile platform architecture and core game mechanics\n${month2}: Create NFT marketplace integration and economic balancing\n${month3}: Beta test with limited player group and refine gameplay\n${month4}: Full launch of mobile platform and initial esports events`;
+      case 'defi':
+        return `${month1}: Complete security audits and cross-chain technical planning\n${month2}: Deploy protocol on first additional blockchain networks\n${month3}: Implement yield optimization strategies and stress testing\n${month4}: Launch full multi-chain capabilities and enhanced features`;
+      default:
+        return `${month1}: Planning and resource allocation for key initiatives\n${month2}: Core development work on priority features\n${month3}: Testing and refinement based on community feedback\n${month4}: Full release of enhanced capabilities and features`;
+    }
+  }
+
+  // Get project budget
+  function getProjectBudget(templateId, goal) {
+    const budgetAmount = goal || '10000';
+    const amount = parseInt(budgetAmount);
+    
+    switch (templateId) {
+      case 'conservation':
+        return `Land acquisition and protection: ${Math.round(amount * 0.5)}$ (${Math.round(50)}%)\nConservation technology and monitoring: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nCommunity engagement and education: ${Math.round(amount * 0.15)}$ (${Math.round(15)}%)\nOperational expenses: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nContingency fund: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'charity':
+        return `Facility improvements and equipment: ${Math.round(amount * 0.4)}$ (${Math.round(40)}%)\nAnimal care supplies and medical services: ${Math.round(amount * 0.3)}$ (${Math.round(30)}%)\nStaff and volunteer training: ${Math.round(amount * 0.15)}$ (${Math.round(15)}%)\nBlockchain tracking implementation: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nAdministrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'education':
+        return `Curriculum development and content creation: ${Math.round(amount * 0.35)}$ (${Math.round(35)}%)\nScholarship fund: ${Math.round(amount * 0.3)}$ (${Math.round(30)}%)\nLearning platform development: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nEducator compensation: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nAdministrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'metaverse':
+        return `Technical development and infrastructure: ${Math.round(amount * 0.4)}$ (${Math.round(40)}%)\nGraphics and user experience enhancements: ${Math.round(amount * 0.25)}$ (${Math.round(25)}%)\nContent creation for new districts: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nMarketing and user acquisition: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nLegal and administrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'cto':
+        return `Security audits and technical debt resolution: ${Math.round(amount * 0.3)}$ (${Math.round(30)}%)\nFeature development from roadmap: ${Math.round(amount * 0.4)}$ (${Math.round(40)}%)\nGovernance system implementation: ${Math.round(amount * 0.15)}$ (${Math.round(15)}%)\nCommunity building and marketing: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nLegal and administrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'ai':
+        return `Computational infrastructure expansion: ${Math.round(amount * 0.35)}$ (${Math.round(35)}%)\nAI research and development: ${Math.round(amount * 0.3)}$ (${Math.round(30)}%)\nAPI development and integration: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nPartnership development: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nLegal and administrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'rwa':
+        return `Asset acquisition: ${Math.round(amount * 0.8)}$ (${Math.round(80)}%)\nLegal and compliance framework: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nTokenization platform development: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)\nMarketing and investor relations: ${Math.round(amount * 0.03)}$ (${Math.round(3)}%)\nAdministrative expenses: ${Math.round(amount * 0.02)}$ (${Math.round(2)}%)`;
+      case 'gamefi':
+        return `Mobile platform development: ${Math.round(amount * 0.35)}$ (${Math.round(35)}%)\nGameplay and NFT system implementation: ${Math.round(amount * 0.25)}$ (${Math.round(25)}%)\nEsports infrastructure and prizes: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nMarketing and player acquisition: ${Math.round(amount * 0.15)}$ (${Math.round(15)}%)\nLegal and administrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      case 'defi':
+        return `Protocol development and cross-chain integration: ${Math.round(amount * 0.4)}$ (${Math.round(40)}%)\nSecurity audits and bug bounties: ${Math.round(amount * 0.25)}$ (${Math.round(25)}%)\nLiquidity provision for new chains: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nUser education and documentation: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nLegal and administrative expenses: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+      default:
+        return `Development and technical implementation: ${Math.round(amount * 0.5)}$ (${Math.round(50)}%)\nMarketing and community growth: ${Math.round(amount * 0.2)}$ (${Math.round(20)}%)\nOperational expenses: ${Math.round(amount * 0.15)}$ (${Math.round(15)}%)\nPartnership development: ${Math.round(amount * 0.1)}$ (${Math.round(10)}%)\nContingency fund: ${Math.round(amount * 0.05)}$ (${Math.round(5)}%)`;
+    }
+  }
+
+  // Create realistic milestones based on template type
+  function getMilestones(template) {
+    const milestones = [];
+    const baseAmount = template.goal ? parseInt(template.goal) : 10000;
+    
+    // Calculate milestone dates
+    const currentDate = new Date();
+    const duration = template.duration || 30;
+    const dateIncrement = Math.floor(duration / 3); // Divide the duration into 3 parts
+    
+    const firstMilestoneDate = new Date(currentDate);
+    firstMilestoneDate.setDate(currentDate.getDate() + dateIncrement);
+    
+    const secondMilestoneDate = new Date(currentDate);
+    secondMilestoneDate.setDate(currentDate.getDate() + dateIncrement * 2);
+    
+    const thirdMilestoneDate = new Date(currentDate);
+    thirdMilestoneDate.setDate(currentDate.getDate() + duration);
+    
+    // Format the dates
+    const formatDate = (date) => date.toISOString().split('T')[0];
+    
+    // Determine milestone amounts and content based on template
+    switch(template.id) {
+      case 'conservation':
+        milestones.push({
+          title: "Conservation Site Selection",
+          description: "Complete evaluation and selection of priority conservation areas based on biodiversity metrics and conservation impact potential.",
+          amount: Math.round(baseAmount * 0.25),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Land Acquisition Initiation",
+          description: "Begin legal process for land acquisition, engage with local communities, and establish conservation management frameworks.",
+          amount: Math.round(baseAmount * 0.35),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Conservation Program Launch",
+          description: "Deploy conservation technology, begin active protection measures, and implement community education programs.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+        
+      case 'charity':
+        milestones.push({
+          title: "Shelter Partnership Program",
+          description: "Establish formal partnerships with animal shelters, conduct needs assessment, and finalize facility improvement plans.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Facility Upgrades and Supply Chain",
+          description: "Begin facility renovations, establish supply chain for ongoing animal care needs, and implement volunteer training programs.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Operational Capacity",
+          description: "Complete all facility improvements, launch comprehensive animal care programs, and implement transparency reporting system.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+        
+      case 'education':
+        milestones.push({
+          title: "Curriculum Development",
+          description: "Create comprehensive educational content, learning objectives, and assessment frameworks for the first set of courses.",
+          amount: Math.round(baseAmount * 0.25),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Platform Development and Scholarship Program",
+          description: "Build the learning platform infrastructure, implement credential verification system, and launch the scholarship application process.",
+          amount: Math.round(baseAmount * 0.35),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Educational Program Launch",
+          description: "Onboard first cohort of students, deploy full course catalog, and establish educational partnerships for wider recognition.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'metaverse':
+        milestones.push({
+          title: "Expanded World Design",
+          description: "Complete architectural designs for new metaverse districts, improve graphics engine, and enhance backend infrastructure for higher user capacity.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Technical Implementation and Beta Testing",
+          description: "Develop new virtual environments, implement enhanced social features, and conduct beta testing with community members.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Metaverse Expansion Launch",
+          description: "Deploy all new districts, release cross-platform compatibility updates, and launch creator tools for community-built content.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'cto':
+        milestones.push({
+          title: "Technical Assessment and Security",
+          description: "Complete comprehensive code audits, resolve critical vulnerabilities, and establish governance framework for decision-making.",
+          amount: Math.round(baseAmount * 0.25),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Feature Development and Community Engagement",
+          description: "Implement priority features from community roadmap, enhance documentation, and rebuild communication channels with token holders.",
+          amount: Math.round(baseAmount * 0.35),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Community Ownership Transition",
+          description: "Complete all promised features, launch enhanced protocol version, and transition to fully decentralized governance model.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'ai':
+        milestones.push({
+          title: "Infrastructure Expansion",
+          description: "Upgrade computational resources, enhance data processing capabilities, and optimize existing AI models for improved performance.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Specialized AI Model Development",
+          description: "Create and train specialized AI models for key use cases, develop API architecture, and begin integration with partner applications.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full AI Platform Launch",
+          description: "Release token holder API access, deploy all specialized models, and launch partner integrations for real-world applications.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'rwa':
+        milestones.push({
+          title: "Asset Acquisition Preparation",
+          description: "Complete legal framework for asset tokenization, identify target properties, and establish compliance procedures for regulatory requirements.",
+          amount: Math.round(baseAmount * 0.2),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Initial Asset Portfolio Acquisition",
+          description: "Complete acquisition of first real-world assets, implement tokenization process, and establish asset management procedures.",
+          amount: Math.round(baseAmount * 0.5),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Revenue Distribution System",
+          description: "Launch dividend distribution mechanism, implement secondary market for token trading, and complete full asset portfolio acquisition.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'gamefi':
+        milestones.push({
+          title: "Mobile Platform Development",
+          description: "Complete core game mechanics, develop platform architecture, and integrate wallet connectivity for mobile devices.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "NFT Marketplace and Economy Implementation",
+          description: "Develop in-game NFT marketplace, balance tokenomics for sustainable play-to-earn mechanics, and conduct closed beta testing.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Game Platform Launch",
+          description: "Release mobile applications on all platforms, launch initial esports tournaments, and implement cross-game asset compatibility.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      case 'defi':
+        milestones.push({
+          title: "Security Enhancement and Cross-Chain Development",
+          description: "Complete comprehensive security audits, develop cross-chain infrastructure, and optimize protocol efficiency for reduced gas costs.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Multi-Chain Deployment and Yield Strategies",
+          description: "Deploy protocol on initial additional blockchains, implement advanced yield optimization strategies, and enhance user interfaces.",
+          amount: Math.round(baseAmount * 0.35),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Protocol Expansion",
+          description: "Complete deployment across all target blockchains, launch enhanced features based on governance votes, and implement educational resources.",
+          amount: Math.round(baseAmount * 0.35),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+
+      default:
+        milestones.push({
+          title: "Initial Development Phase",
+          description: "Complete core feature development, integrate community feedback, and establish project infrastructure for sustainable growth.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(firstMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Feature Implementation and Testing",
+          description: "Develop enhanced capabilities based on roadmap priorities, conduct testing with community members, and refine user experience.",
+          amount: Math.round(baseAmount * 0.3),
+          date: formatDate(secondMilestoneDate),
+          id: uuidv4()
+        });
+        milestones.push({
+          title: "Full Feature Deployment",
+          description: "Launch all planned features, establish strategic partnerships, and implement community governance mechanisms for future development.",
+          amount: Math.round(baseAmount * 0.4),
+          date: formatDate(thirdMilestoneDate),
+          id: uuidv4()
+        });
+        break;
+    }
+    
+    return milestones;
+  }
   
   // Function to reset template selection
   const handleChangeTemplate = () => {
@@ -2103,6 +2598,362 @@ const CreateCampaignPage = () => {
       </div>
     );
   };
+  
+  // Get appropriate roles based on template
+  function getTemplateRoles(templateId) {
+    switch (templateId) {
+      case 'conservation':
+        return ['Conservation Director', 'Environmental Scientist', 'Community Outreach Manager'];
+      case 'charity':
+        return ['Charity Director', 'Program Manager', 'Fundraising Coordinator'];
+      case 'education':
+        return ['Education Lead', 'Curriculum Developer', 'Learning Platform Engineer'];
+      case 'metaverse':
+        return ['Metaverse Architect', '3D Developer', 'Virtual Experience Designer'];
+      case 'cto':
+        return ['Community Lead', 'Technical Director', 'Governance Manager'];
+      case 'ai':
+        return ['AI Research Lead', 'Data Scientist', 'ML Engineer'];
+      case 'rwa':
+        return ['Asset Manager', 'Legal Compliance Officer', 'Tokenization Specialist'];
+      case 'gamefi':
+        return ['Game Director', 'Tokenomics Designer', 'Blockchain Developer'];
+      case 'defi':
+        return ['Protocol Lead', 'Smart Contract Engineer', 'Financial Analyst'];
+      default:
+        return ['Project Manager', 'Technical Lead', 'Marketing Director'];
+    }
+  }
+
+  // Get template-specific update frequency
+  function getTemplateUpdateFrequency(templateId) {
+    switch (templateId) {
+      case 'cto':
+      case 'gamefi':
+      case 'defi':
+        return 'weekly'; // Fast-moving projects need more frequent updates
+      case 'rwa':
+      case 'conservation':
+        return 'monthly'; // Slower-moving projects with less frequent milestones
+      default:
+        return 'biweekly';
+    }
+  }
+
+  // Get template-specific refund policy
+  function getTemplateRefundPolicy(templateId) {
+    switch (templateId) {
+      case 'conservation':
+      case 'charity':
+        return "Contributions to this campaign support our ongoing conservation/charity efforts. If the campaign fails to reach its funding goal, all contributions will be automatically refunded. Once the goal is reached, contributions are non-refundable as funds will be immediately allocated to the stated conservation activities.";
+      case 'gamefi':
+      case 'metaverse':
+        return "Contributions to this campaign support ongoing development. If the campaign fails to reach its target, all contributions will be automatically refunded. Once funded, refund requests will be handled on a case-by-case basis within 14 days of contribution.";
+      case 'rwa':
+        return "Contributions to this campaign represent investment in real-world assets. Due to the nature of asset acquisition, all contributions are final once the campaign reaches its funding goal. If the campaign fails to reach its target, all contributions will be automatically refunded.";
+      default:
+        return "If the campaign fails to reach its funding goal, all contributions will be automatically refunded. Once the goal is reached, refund requests will be considered on a case-by-case basis within 14 days of contribution.";
+    }
+  }
+
+  // Get template-specific rewards
+  function getTemplateRewards(templateId, goal) {
+    const baseAmount = goal ? parseInt(goal) : 10000;
+    
+    // Default rewards structure
+    const rewards = [
+      {
+        title: 'Early Supporter',
+        description: `Support our ${templateId} project and receive a special mention on our website and access to backer-only updates.`,
+        price: Math.round(baseAmount * 0.01).toString(),
+        availableItems: '0',
+        estimatedDelivery: getDefaultDeliveryDate(30),
+        displayOrder: 1
+      },
+      {
+        title: 'Premium Backer',
+        description: `Receive all Early Supporter benefits plus exclusive access to our community channels and voting rights on minor project decisions.`,
+        price: Math.round(baseAmount * 0.05).toString(),
+        availableItems: '0',
+        estimatedDelivery: getDefaultDeliveryDate(30),
+        displayOrder: 2
+      },
+      {
+        title: 'VIP Supporter',
+        description: `Receive all Premium Backer benefits plus a limited edition NFT that proves your early support and grants special access to future features.`,
+        price: Math.round(baseAmount * 0.1).toString(),
+        availableItems: '100',
+        estimatedDelivery: getDefaultDeliveryDate(45),
+        displayOrder: 3
+      }
+    ];
+    
+    // Template-specific rewards
+    switch (templateId) {
+      case 'conservation':
+        rewards[1].description = 'Receive all Early Supporter benefits plus have a tree planted in your name with a digital certificate.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus have your name permanently recorded in our conservation ledger and receive quarterly impact reports.';
+        break;
+      case 'charity':
+        rewards[1].description = 'Receive all Early Supporter benefits plus a digital thank-you card from one of the beneficiaries of our program.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus a personalized impact report showing exactly how your contribution made a difference.';
+        break;
+      case 'education':
+        rewards[1].description = 'Receive all Early Supporter benefits plus early access to one educational course of your choice.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus lifetime access to our educational platform and all future courses.';
+        break;
+      case 'metaverse':
+        rewards[1].description = 'Receive all Early Supporter benefits plus a limited edition virtual item for use in our metaverse.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus a premium land plot in our new metaverse district.';
+        break;
+      case 'gamefi':
+        rewards[1].description = 'Receive all Early Supporter benefits plus early access to our game beta and a starter pack of in-game items.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus a rare in-game character and entry into our first tournament with guaranteed prizes.';
+        break;
+      case 'defi':
+        rewards[1].description = 'Receive all Early Supporter benefits plus priority access to our protocol launch and fee discounts.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus enhanced yield rates and access to exclusive liquidity pools for the first 3 months.';
+        break;
+      case 'rwa':
+        rewards[1].description = 'Receive all Early Supporter benefits plus priority notification when new assets are added to the portfolio.';
+        rewards[2].description = 'Receive all Premium Backer benefits plus a higher dividend rate on your contribution for the first year.';
+        break;
+    }
+    
+    return rewards;
+  }
+  
+  // Helper to get a default delivery date X days in the future
+  function getDefaultDeliveryDate(daysInFuture) {
+    const date = new Date();
+    date.setDate(date.getDate() + daysInFuture);
+    return date.toISOString().split('T')[0];
+  }
+  
+  // Track when users interact with pre-filled fields
+  const handlePrefilledFieldReview = (section) => {
+    setPrefilledFieldsReviewed(prev => ({
+      ...prev,
+      [section]: false // Mark as reviewed
+    }));
+  };
+  
+  // Add effect to detect changes to form sections
+  useEffect(() => {
+    // When any form field changes, mark that section as reviewed
+    const section = activeTab;
+    if (section && prefilledFieldsReviewed[section]) {
+      handlePrefilledFieldReview(section);
+    }
+  }, [formData, activeTab]);
+  
+  // Enhanced form validation to check if pre-filled fields have been reviewed
+  const validateFullForm = () => {
+    const basicValidation = validateForm();
+    
+    // Check if any pre-filled sections haven't been reviewed
+    const unreviewedSections = Object.entries(prefilledFieldsReviewed)
+      .filter(([section, needsReview]) => needsReview)
+      .map(([section]) => section);
+    
+    if (unreviewedSections.length > 0) {
+      const sectionNames = unreviewedSections.map(section => 
+        formSteps.find(step => step.key === section)?.label || section
+      ).join(', ');
+      
+      setError(`Please review the pre-filled content in these sections: ${sectionNames}`);
+      return false;
+    }
+    
+    if (!showPreview) {
+      setShowPreviewRequiredAlert(true);
+      setActiveTab('preview');
+      setError('Please review your campaign in the preview before submitting');
+      return false;
+    }
+    
+    return basicValidation;
+  };
+  
+  // Create an enhanced submit function that calls the original handleSubmit after validation
+  const enhancedSubmit = (e) => {
+    if (e) e.preventDefault();
+    
+    // Verify wallet is connected
+    if (!connectedWallet) {
+      setError('Please connect your wallet before creating a campaign');
+      return;
+    }
+    
+    // Verify wallet is verified
+    if (!isWalletVerified) {
+      setError('Your wallet must be verified before creating a campaign. Please connect and sign with your wallet.');
+      return;
+    }
+    
+    // Verify token is provided and validated
+    if (!formData.basics.tokenAddress) {
+      setError('Token address is required. Please enter and validate a token address.');
+      setFieldErrors(prev => ({...prev, tokenAddress: 'Token address is required'}));
+      setActiveTab('basics');
+      return;
+    }
+    
+    // Verify token is validated
+    if (!tokenInfo) {
+      setError('Please validate your token address before submitting. Click the Validate button next to the token address field.');
+      setFieldErrors(prev => ({...prev, tokenAddress: 'Token must be validated'}));
+      setActiveTab('basics');
+      return;
+    }
+    
+    // Check if the wallet's chain matches the token's blockchain
+    if (!validateChainMatch()) {
+      setError(`Your wallet must be on the ${tokenInfo.blockchain} network to create this campaign. Please switch networks.`);
+      return;
+    }
+    
+    // Validate complete form including checking if template fields were reviewed
+    if (!validateFullForm()) {
+      return;
+    }
+    
+    // If all validation passes, call the original handleSubmit
+    handleSubmit(e);
+  };
+
+  // Update the render preview section to show a more prominent reminder
+  const renderPreviewSection = () => (
+    <Card className="mb-3">
+      <Card.Body>
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <h4>Final Preview</h4>
+          <div>
+            <Button 
+              variant={showPreview ? 'primary' : 'outline-primary'}
+              onClick={() => {
+                setShowPreview(!showPreview);
+                setShowPreviewRequiredAlert(false);
+              }}
+              className="me-2"
+            >
+              {showPreview ? 'Hide Preview' : 'Show Live Preview'}
+            </Button>
+            <Button 
+              variant="success" 
+              onClick={enhancedSubmit}
+              disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
+            >
+              Create Campaign
+            </Button>
+          </div>
+        </div>
+        
+        {showPreviewRequiredAlert && (
+          <Alert variant="warning" className="mb-4">
+            <Alert.Heading>
+              <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+              Preview Required Before Submission
+            </Alert.Heading>
+            <p>Please review your campaign preview before submitting. This will help ensure all pre-filled content from the template matches your expectations.</p>
+            <p>Pay special attention to the template-generated content in the following sections:</p>
+            <ul>
+              <li><strong>Story</strong>: Ensure the narrative aligns with your project</li>
+              <li><strong>Milestones</strong>: Verify the timeline and funding breakdowns</li>
+              <li><strong>Rewards</strong>: Check that the reward tiers match your offering</li>
+            </ul>
+            <Button 
+              variant="primary" 
+              onClick={() => {
+                setShowPreview(true);
+                setShowPreviewRequiredAlert(false);
+              }}
+            >
+              Show Preview Now
+            </Button>
+          </Alert>
+        )}
+        
+        {showPreview ? (
+          <LivePreview formData={formData} tokenInfo={tokenInfo} />
+        ) : (
+          <>
+            <Alert variant="info" className="mb-4">
+              <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
+              Preview your campaign before creating it. Click "Show Live Preview" to see how your campaign will look to potential supporters.
+            </Alert>
+            
+            <h5>Campaign Summary</h5>
+            <ListGroup className="mb-4">
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Title</span>
+                <strong>{formData.basics.projectTitle || 'Not set'}</strong>
+              </ListGroup.Item>
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Funding Goal</span>
+                <strong>{formData.basics.projectFundAmount || '0'} {formData.basics.projectFundCurrency}</strong>
+              </ListGroup.Item>
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Blockchain</span>
+                <strong>{formData.basics.blockchainChain || 'Not set'}</strong>
+              </ListGroup.Item>
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Token</span>
+                <span>
+                  {tokenInfo ? (
+                    <>
+                      <strong>{tokenInfo.symbol}</strong> ({tokenInfo.name})
+                    </>
+                  ) : 'Not validated'}
+                </span>
+              </ListGroup.Item>
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Duration</span>
+                <strong>{formData.basics.projectDeadlineDate || '0'} days</strong>
+              </ListGroup.Item>
+              <ListGroup.Item className="d-flex justify-content-between align-items-center">
+                <span>Contract Owner</span>
+                <code>{formData.basics.contractOwnerAddress || connectedWallet}</code>
+              </ListGroup.Item>
+            </ListGroup>
+            
+            {Object.keys(fieldErrors).length > 0 && (
+              <Alert variant="danger">
+                <Alert.Heading>
+                  <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
+                  There are errors in your form
+                </Alert.Heading>
+                <p>Please fix the following errors before creating your campaign:</p>
+                <ul>
+                  {Object.entries(fieldErrors).map(([field, error]) => (
+                    <li key={field}>{error}</li>
+                  ))}
+                </ul>
+              </Alert>
+            )}
+            
+            <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
+              <Button 
+                variant="success" 
+                size="lg"
+                onClick={enhancedSubmit}
+                disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
+              >
+                Create Campaign
+              </Button>
+            </div>
+          </>
+        )}
+      </Card.Body>
+    </Card>
+  );
+
+  // Override the Tab element for the preview tab
+  const TabPreview = () => (
+    <Tab eventKey="preview" title="Preview">
+      {renderPreviewSection()}
+    </Tab>
+  );
   
   return (
     <Container className="py-5 campaign-creation-container">
@@ -2595,102 +3446,9 @@ const CreateCampaignPage = () => {
         </Card>
         </Tab>
         <Tab eventKey="preview" title="Preview">
-          <Card className="mb-3">
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-center mb-4">
-                <h4>Final Preview</h4>
-                <div>
-                  <Button 
-                    variant={showPreview ? 'primary' : 'outline-primary'}
-                    onClick={() => setShowPreview(!showPreview)}
-                    className="me-2"
-                  >
-                    {showPreview ? 'Hide Preview' : 'Show Live Preview'}
-                  </Button>
-                  <Button 
-                    variant="success" 
-                    onClick={handleSubmit}
-                    disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
-                  >
-                    Create Campaign
-                  </Button>
-                </div>
-              </div>
-              
-              {showPreview ? (
-                <LivePreview formData={formData} tokenInfo={tokenInfo} />
-              ) : (
-                <>
-                  <Alert variant="info" className="mb-4">
-                    <FontAwesomeIcon icon={faInfoCircle} className="me-2" />
-                    Preview your campaign before creating it. Click "Show Live Preview" to see how your campaign will look to potential supporters.
-                  </Alert>
-                  
-                  <h5>Campaign Summary</h5>
-                  <ListGroup className="mb-4">
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Title</span>
-                      <strong>{formData.basics.projectTitle || 'Not set'}</strong>
-                    </ListGroup.Item>
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Funding Goal</span>
-                      <strong>{formData.basics.projectFundAmount || '0'} {formData.basics.projectFundCurrency}</strong>
-                    </ListGroup.Item>
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Blockchain</span>
-                      <strong>{formData.basics.blockchainChain || 'Not set'}</strong>
-                    </ListGroup.Item>
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Token</span>
-                      <span>
-                        {tokenInfo ? (
-                          <>
-                            <strong>{tokenInfo.symbol}</strong> ({tokenInfo.name})
-                          </>
-                        ) : 'Not validated'}
-                      </span>
-                    </ListGroup.Item>
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Duration</span>
-                      <strong>{formData.basics.projectDeadlineDate || '0'} days</strong>
-                    </ListGroup.Item>
-                    <ListGroup.Item className="d-flex justify-content-between align-items-center">
-                      <span>Contract Owner</span>
-                      <code>{formData.basics.contractOwnerAddress || connectedWallet}</code>
-                    </ListGroup.Item>
-                  </ListGroup>
-                  
-                  {Object.keys(fieldErrors).length > 0 && (
-                    <Alert variant="danger">
-                      <Alert.Heading>
-                        <FontAwesomeIcon icon={faExclamationTriangle} className="me-2" />
-                        There are errors in your form
-                      </Alert.Heading>
-                      <p>Please fix the following errors before creating your campaign:</p>
-                      <ul>
-                        {Object.entries(fieldErrors).map(([field, error]) => (
-                          <li key={field}>{error}</li>
-                        ))}
-                      </ul>
-                    </Alert>
-                  )}
-                  
-                  <div className="d-grid gap-2 col-md-6 mx-auto mt-4">
-                    <Button 
-                      variant="success" 
-                      size="lg"
-                      onClick={handleSubmit}
-                      disabled={Object.keys(fieldErrors).length > 0 || !tokenInfo}
-                    >
-                      Create Campaign
-                    </Button>
-                  </div>
-                </>
-              )}
-            </Card.Body>
-          </Card>
+          {renderPreviewSection()}
         </Tab>
-        
+
         {/* Hidden tabs - these will be accessed through the progress bar but not shown in the tab navigation */}
         <Tab eventKey="story" title={null} tabClassName="d-none">
           {/* Story tab content */}

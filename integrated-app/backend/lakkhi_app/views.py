@@ -992,4 +992,151 @@ def contract_config(request):
         return Response({
             "success": False,
             "message": str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Add this new endpoint for token socials
+@api_view(['GET'])
+def token_socials(request):
+    """
+    Get token social media links from Dexscreener or Dextools
+    """
+    token_address = request.GET.get('token_address')
+    blockchain = request.GET.get('blockchain', 'ethereum')
+    source = request.GET.get('source', 'dexscreener')
+    
+    if not token_address:
+        return Response({
+            'success': False,
+            'message': 'Token address is required'
+        }, status=400)
+    
+    try:
+        if source == 'dexscreener':
+            socials = get_dexscreener_socials(token_address, blockchain)
+        elif source == 'dextools':
+            socials = get_dextools_socials(token_address, blockchain)
+        else:
+            socials = get_dexscreener_socials(token_address, blockchain)
+        
+        return Response({
+            'success': True,
+            'socials': socials
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+def get_dexscreener_socials(token_address, blockchain):
+    """
+    Get token social info from Dexscreener
+    """
+    import requests
+    
+    # Standardize the blockchain name for Dexscreener
+    chain_id = blockchain.lower()
+    if chain_id == 'bsc':
+        chain_id = 'bsc'
+    elif chain_id == 'ethereum':
+        chain_id = 'ethereum'
+    elif chain_id == 'base':
+        chain_id = 'base'
+    
+    # Call Dexscreener API
+    url = f'https://api.dexscreener.com/latest/dex/tokens/{token_address}'
+    response = requests.get(url, timeout=10)
+    
+    if response.status_code != 200:
+        return {}
+    
+    data = response.json()
+    
+    socials = {
+        'website': '',
+        'twitter': '',
+        'telegram': '',
+        'discord': '',
+        'github': '',
+        'linkedin': ''
+    }
+    
+    # Extract social info from Dexscreener response
+    if data and data.get('pairs') and len(data['pairs']) > 0:
+        token_data = data['pairs'][0].get('baseToken', {})
+        
+        if token_data.get('website'):
+            socials['website'] = token_data['website']
+        
+        if token_data.get('twitter'):
+            socials['twitter'] = f"https://twitter.com/{token_data['twitter']}"
+        
+        if token_data.get('telegram'):
+            socials['telegram'] = f"https://t.me/{token_data['telegram']}"
+    
+    return socials
+
+def get_dextools_socials(token_address, blockchain):
+    """
+    Get token social info from Dextools
+    """
+    import requests
+    
+    # Standardize the blockchain ID for Dextools
+    chain_id = '1'  # Default to Ethereum
+    if blockchain.lower() == 'bsc':
+        chain_id = '56'
+    elif blockchain.lower() == 'ethereum':
+        chain_id = '1'
+    elif blockchain.lower() == 'base':
+        chain_id = '8453'
+    
+    # Note: Dextools API requires API keys, so we're using a public endpoint that doesn't need authentication
+    # This might be less reliable but works for demo purposes
+    url = f'https://www.dextools.io/shared/data/token?chain={chain_id}&address={token_address}'
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            return {}
+        
+        data = response.json()
+        
+        socials = {
+            'website': '',
+            'twitter': '',
+            'telegram': '',
+            'discord': '',
+            'github': '',
+            'linkedin': ''
+        }
+        
+        # Extract social info from Dextools response
+        if data and data.get('data') and data['data'].get('links'):
+            links = data['data']['links']
+            
+            if links.get('website'):
+                socials['website'] = links['website']
+                
+            if links.get('twitter'):
+                socials['twitter'] = links['twitter']
+                
+            if links.get('telegram'):
+                socials['telegram'] = links['telegram']
+                
+            if links.get('discord'):
+                socials['discord'] = links['discord']
+                
+            if links.get('github'):
+                socials['github'] = links['github']
+        
+        return socials
+    except Exception as e:
+        print(f"Error fetching from Dextools: {e}")
+        return {} 

@@ -27,7 +27,15 @@ urlpatterns = [
     path('api/payment/process/', views.payment_process, name='payment_process'),
     path('api/mercuryo/callback/', views.mercuryo_callback, name='mercuryo_callback'),
     path('api/campaigns/<int:campaign_id>/analytics/export/', views.export_analytics, name='export-analytics'),
-    path('api/contract-config/', views.contract_config, name='contract-config'),
+    
+    # Token validation endpoint
+    path('api/token/validate/', views.validate_token, name='validate_token'),
+    
+    # Token price endpoint
+    path('api/token/price/', views.token_price, name='token_price'),
+    
+    # Token social links endpoint
+    path('api/token/socials/', views.token_socials, name='token_socials'),
     
     # Include router URLs
     path('api/', include(router.urls)),
