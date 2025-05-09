@@ -88,12 +88,19 @@ const CreateCampaignPage = () => {
       projectFundCurrency: 'USD',
       walletAddress: '',
       tokenAddress: '',
-        contractOwnerAddress: '', // Add contract owner address field
+      contractOwnerAddress: '', // Add contract owner address field
       category: '',
       tags: [],
       minContribution: '0.01',
       maxContribution: '',
-      enableAutoRefund: true
+      enableAutoRefund: true,
+      // Add social fields to basics section
+      website: '',
+      twitter: '',
+      telegram: '',
+      discord: '',
+      github: '',
+      linkedin: ''
     },
     story: {
       projectStory: '',
@@ -443,6 +450,9 @@ const CreateCampaignPage = () => {
         }
         
         setTokenInfo(tokenData);
+        
+        // Fetch and populate social links in the basics tab after successful validation
+        await fetchTokenSocialLinks(tokenAddress, tokenData.blockchain || detectedBlockchain);
       } else {
         setTokenError(response.data.message || "Invalid token address");
       }
@@ -993,126 +1003,131 @@ const CreateCampaignPage = () => {
 
     // Fetch and populate social links if we have valid token info
     if (tokenInfo && tokenInfo.address) {
-      fetchTokenSocialLinks(tokenInfo.address, tokenInfo.blockchain)
-        .then(socialLinks => {
-          if (socialLinks) {
-            // Update social fields with fetched data
-            Object.keys(socialLinks).forEach(platform => {
-              if (socialLinks[platform]) {
-                handleSocialChange(platform, socialLinks[platform]);
-              }
-            });
-            console.log('Social links populated from token data');
-          }
-        })
-        .catch(error => {
-          console.warn('Error fetching token social links:', error);
-        });
+      // Directly fetch and use the social links
+      fetchTokenSocialLinks(tokenInfo.address, tokenInfo.blockchain);
     }
   };
 
-  // Function to fetch token social links from Dexscreener/Dextools
+  // Function to fetch token social links from Dexscreener
   const fetchTokenSocialLinks = async (tokenAddress, blockchain) => {
     try {
       console.log(`Fetching social links for ${tokenAddress} on ${blockchain}`);
       
-      // Try Dexscreener first (they have a clean API)
-      let socialLinks = await fetchDexscreenerSocials(tokenAddress, blockchain);
+      // Only use Dexscreener for social links
+      await fetchDexscreenerSocials(tokenAddress, blockchain);
       
-      // If Dexscreener didn't return social links, try Dextools
-      if (!socialLinks || Object.keys(socialLinks).filter(k => socialLinks[k]).length === 0) {
-        socialLinks = await fetchDextoolsSocials(tokenAddress, blockchain);
-      }
+      // Success message
+      console.log('Social links populated from token data');
       
-      return socialLinks;
+      return true;
     } catch (error) {
       console.error('Error fetching token social links:', error);
-      return null;
+      return false;
     }
   };
 
   // Fetch social links from Dexscreener
   const fetchDexscreenerSocials = async (tokenAddress, blockchain) => {
     try {
-      // Convert blockchain name to Dexscreener chain ID
-      const chainId = blockchain === 'BSC' ? 'bsc' : 
-                     blockchain === 'Ethereum' ? 'ethereum' : 
-                     blockchain === 'Base' ? 'base' : 'ethereum';
+      const dexscreenerUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+      console.log("Dexscreener URL:", dexscreenerUrl);
       
-      // Call Dexscreener API (via backend proxy to avoid CORS issues)
-      const response = await axios.get(
-        `${process.env.REACT_APP_BASE_URL}/api/token/socials/?source=dexscreener&token_address=${tokenAddress}&blockchain=${chainId}`,
-        { 
-          withCredentials: true,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
+      const directResponse = await fetch(dexscreenerUrl);
+      const data = await directResponse.json();
+      
+      if (data && data.pairs && data.pairs.length > 0) {
+        const pair = data.pairs[0];
+        console.log("Pair data found:", JSON.stringify(pair));
+        
+        // DIRECT FORM STATE UPDATE - Initialize socials in basics tab instead of social tab
+        setFormData(prev => ({
+          ...prev,
+          basics: {
+            ...prev.basics,
+            website: "",
+            twitter: "",
+            telegram: "",
+            discord: "",
+            github: "",
+            linkedin: ""
+          }
+        }));
+        
+        // Process websites (website, Instagram etc.)
+        if (pair.websites && Array.isArray(pair.websites)) {
+          console.log("Websites found:", JSON.stringify(pair.websites));
+          
+          // Find main website
+          const websiteEntry = pair.websites.find(site => site.label === "Website" && site.url);
+          if (websiteEntry) {
+            console.log("Setting website to:", websiteEntry.url);
+            setFormData(prev => ({
+              ...prev,
+              basics: {
+                ...prev.basics,
+                website: websiteEntry.url
+              }
+            }));
           }
         }
-      );
-      
-      // If backend proxy is not available, try direct API (may have CORS issues)
-      if (!response.data || !response.data.success) {
-        // Direct call to Dexscreener - note this might fail due to CORS
-        const dexscreenerUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
-        const directResponse = await fetch(dexscreenerUrl);
-        const data = await directResponse.json();
         
-        if (data && data.pairs && data.pairs.length > 0) {
-          const tokenData = data.pairs[0].baseToken;
-          return {
-            website: tokenData.website || '',
-            twitter: tokenData.twitter ? `https://twitter.com/${tokenData.twitter}` : '',
-            telegram: tokenData.telegram ? `https://t.me/${tokenData.telegram}` : '',
-            discord: '',
-            github: '',
-            linkedin: ''
-          };
+        // Process social links (Twitter, Telegram, etc.)
+        if (pair.socials && Array.isArray(pair.socials)) {
+          console.log("Socials found:", JSON.stringify(pair.socials));
+          
+          for (const social of pair.socials) {
+            if (social.type && social.url) {
+              console.log(`Found social: ${social.type} = ${social.url}`);
+              
+              let fieldName = "";
+              
+              // Map social type to form field name
+              if (social.type === "twitter") {
+                fieldName = "twitter";
+              } else if (social.type === "telegram") {
+                fieldName = "telegram";
+              } else if (social.type === "discord") {
+                fieldName = "discord";
+              } else if (social.type === "github") {
+                fieldName = "github";
+              } else if (social.type === "linkedin") {
+                fieldName = "linkedin";
+              }
+              
+              // Only update if we have a matching field
+              if (fieldName) {
+                console.log(`Updating ${fieldName} field with ${social.url}`);
+                setFormData(prev => ({
+                  ...prev,
+                  basics: {
+                    ...prev.basics,
+                    [fieldName]: social.url
+                  }
+                }));
+              }
+            }
+          }
         }
-      } else if (response.data && response.data.socials) {
-        // Return socials from backend proxy
-        return response.data.socials;
+        
+        console.log("Social form data updated directly in basics tab!");
+        return true;
+      } else {
+        console.log("No pairs found in Dexscreener response");
+        return false;
       }
-      
-      return {};
     } catch (error) {
-      console.warn('Error fetching from Dexscreener:', error);
-      return {};
+      console.error('Error fetching from Dexscreener:', error);
+      return false;
     }
   };
 
-  // Fetch social links from Dextools
+  // Fetch social links from Dextools - Disabled due to API limitations
   const fetchDextoolsSocials = async (tokenAddress, blockchain) => {
-    try {
-      // Convert blockchain name to Dextools chain ID
-      const chainId = blockchain === 'BSC' ? '56' : 
-                     blockchain === 'Ethereum' ? '1' : 
-                     blockchain === 'Base' ? '8453' : '1';
-      
-      // Call Dextools API (via backend proxy to avoid CORS issues)
-      const response = await axios.get(
-        `${process.env.REACT_APP_BASE_URL}/api/token/socials/?source=dextools&token_address=${tokenAddress}&blockchain=${chainId}`,
-        { 
-          withCredentials: true,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      if (response.data && response.data.success && response.data.socials) {
-        return response.data.socials;
-      }
-      
-      // If backend proxy is not available, we can't easily call Dextools API directly
-      // as they typically require authentication
-
-      return {};
-    } catch (error) {
-      console.warn('Error fetching from Dextools:', error);
-      return {};
-    }
+    // Dextools API is typically limited and requires authentication
+    // For now, this function will just return empty social links
+    // A proper implementation would require a server-side proxy with authentication
+    console.log('Dextools social links not available without authentication');
+    return {};
   };
   
   // Add this function to get prices from open, CORS-friendly APIs
@@ -3238,13 +3253,9 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
                 <Form.Control 
                   type="text"
                 value={formData.basics.tokenAddress}
-                onChange={(e) => {
-                  handleInputChange('basics', 'tokenAddress', e.target.value);
-                  clearTokenInfo();
-                }}
-                onBlur={handleTokenBlur}
-                required
-                placeholder="0x... or ENS name"
+                disabled
+                  readOnly
+                placeholder="Token address will be populated from above"
                 isInvalid={fieldErrors['basics.tokenAddress']}
                 />
               <Form.Text className="text-muted mt-2">
@@ -3276,19 +3287,71 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
               </Alert>
             )}
             
-                <FormField
-                  label="Brief Description"
-                as="textarea"
-                rows={3}
-                value={formData.basics.projectDescription}
-                onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
-                required
-                placeholder="Briefly describe your project (max 300 characters)"
-                maxLength={300}
-                  validate={(val) => val && val.trim().length >= 10}
-                  errorMessage="Description must be at least 10 characters"
-                  error={fieldErrors['basics.projectDescription']}
-              />
+            {/* Add Social Media section */}
+            <h4 className="mt-4 mb-3">Social Media & Web Presence</h4>
+            <p className="text-muted mb-3">These fields will be automatically populated when a token is validated, but you can edit them as needed.</p>
+
+            <FormField
+              label="Website"
+              type="url"
+              value={formData.basics.website || ''}
+              onChange={(e) => handleInputChange('basics', 'website', e.target.value)}
+              placeholder="https://yourproject.com"
+            />
+
+            <FormField
+              label="Twitter"
+              type="url"
+              value={formData.basics.twitter || ''}
+              onChange={(e) => handleInputChange('basics', 'twitter', e.target.value)}
+              placeholder="https://x.com/yourproject"
+            />
+
+            <FormField
+              label="Telegram"
+              type="url"
+              value={formData.basics.telegram || ''}
+              onChange={(e) => handleInputChange('basics', 'telegram', e.target.value)}
+              placeholder="https://t.me/yourproject"
+            />
+
+            <FormField
+              label="Discord"
+              type="url"
+              value={formData.basics.discord || ''}
+              onChange={(e) => handleInputChange('basics', 'discord', e.target.value)}
+              placeholder="https://discord.gg/yourproject"
+            />
+
+            <FormField
+              label="GitHub"
+              type="url"
+              value={formData.basics.github || ''}
+              onChange={(e) => handleInputChange('basics', 'github', e.target.value)}
+              placeholder="https://github.com/yourproject"
+            />
+
+            <FormField
+              label="LinkedIn"
+              type="url"
+              value={formData.basics.linkedin || ''}
+              onChange={(e) => handleInputChange('basics', 'linkedin', e.target.value)}
+              placeholder="https://linkedin.com/company/yourproject"
+            />
+
+            <FormField
+              label="Brief Description"
+              as="textarea"
+              rows={3}
+              value={formData.basics.projectDescription}
+              onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
+              required
+              placeholder="Briefly describe your project (max 300 characters)"
+              maxLength={300}
+              validate={(val) => val && val.trim().length >= 10}
+              errorMessage="Description must be at least 10 characters"
+              error={fieldErrors['basics.projectDescription']}
+            />
             
             <Row>
               <Col md={6}>
@@ -4049,4 +4112,4 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
   );
 };
 
-export default CreateCampaignPage; 
+export default CreateCampaignPage; still

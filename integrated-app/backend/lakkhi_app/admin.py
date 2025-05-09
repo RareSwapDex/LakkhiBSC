@@ -154,7 +154,7 @@ class CampaignAdmin(admin.ModelAdmin):
                 self.message_user(request, f'Error creating release: {str(e)}', level=messages.ERROR)
                 return redirect('admin:lakkhi_app_campaign_changelist')
         
-        return redirect('admin:lakkhi_app_campaign_changelist') 
+        return redirect('admin:lakkhi_app_campaign_changelist')
     
     def contract_owner_display(self, obj):
         if obj.contract_owner:

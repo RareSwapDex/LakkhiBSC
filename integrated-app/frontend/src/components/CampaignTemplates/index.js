@@ -74,7 +74,7 @@ const CampaignTemplates = ({ onSelectTemplate }) => {
       description: 'Revitalize an abandoned project through community-led development.',
       goal: '6000',
       duration: 14,
-      categories: ['DAO', 'Community', 'Governance'],
+      categories: ['Community DAO', 'Community', 'Governance'],
       detailedDescription: 'Rejuvenate a project where the original team has left through community governance and distributed leadership. CTO token holders guide the project\'s future development and direction.',
       priority: 5
     },
@@ -85,7 +85,7 @@ const CampaignTemplates = ({ onSelectTemplate }) => {
       description: 'Fund AI research and infrastructure with a token that powers innovation.',
       goal: '40000',
       duration: 30,
-      categories: ['AI', 'Technology', 'Computing'],
+      categories: ['AI & Technology', 'Technology', 'Computing'],
       detailedDescription: 'Develop cutting-edge AI solutions with token-based funding that supports computational resources, research, and model development. Token holders gain early access to AI capabilities.',
       priority: 6
     },
@@ -96,7 +96,7 @@ const CampaignTemplates = ({ onSelectTemplate }) => {
       description: 'Tokenize real world assets to enable fractional ownership and liquidity.',
       goal: '50000',
       duration: 30,
-      categories: ['RWA', 'Assets', 'Finance'],
+      categories: ['Real World Assets', 'Assets', 'Finance'],
       detailedDescription: 'Create tokens backed by real-world assets such as real estate, art, or commodities, enabling fractional ownership and investment opportunities. Token holders receive proportional ownership benefits.',
       priority: 7
     },
@@ -107,7 +107,7 @@ const CampaignTemplates = ({ onSelectTemplate }) => {
       description: 'Fund game development with tokens that power in-game economies.',
       goal: '20000',
       duration: 60,
-      categories: ['Gaming', 'Play-to-Earn', 'NFTs'],
+      categories: ['GameFi', 'Play-to-Earn', 'NFTs'],
       detailedDescription: 'Support blockchain game development with token funding that enables play-to-earn mechanics, in-game assets, and community-owned virtual economies. Token holders enjoy exclusive gaming privileges.',
       priority: 8
     },
@@ -118,7 +118,7 @@ const CampaignTemplates = ({ onSelectTemplate }) => {
       description: 'Fund decentralized finance protocols with governance tokens.',
       goal: '35000',
       duration: 30,
-      categories: ['DeFi', 'Finance', 'Yield'],
+      categories: ['DeFi Protocol', 'Finance', 'Yield'],
       detailedDescription: 'Develop decentralized finance protocols with token funding that supports liquidity provision, yield generation, and financial innovation. Token holders participate in governance and protocol earnings.',
       priority: 9
     },
