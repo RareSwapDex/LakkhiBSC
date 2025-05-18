@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { Container, Form, Button, Card, Row, Col, Alert, Spinner, Tabs, Tab, ListGroup, InputGroup } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -451,8 +451,15 @@ const CreateCampaignPage = () => {
         
         setTokenInfo(tokenData);
         
-        // Fetch and populate social links in the basics tab after successful validation
-        await fetchTokenSocialLinks(tokenAddress, tokenData.blockchain || detectedBlockchain);
+        // Immediately fetch social links after successful token validation
+        if (tokenData && tokenData.address) {
+          // Reset flags to make sure social links get processed
+          socialProcessingComplete.current = false;
+          setSocialsPopulated(false);
+          
+          // Fetch social links using the blockchain from token info
+          await fetchTokenSocialLinks(tokenData.address, tokenData.blockchain);
+        }
       } else {
         setTokenError(response.data.message || "Invalid token address");
       }
@@ -2970,6 +2977,27 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
     </Tab>
   );
   
+  // Clear token info when the token address is manually changed
+  const handleTokenAddressChange = (value) => {
+    handleInputChange('basics', 'tokenAddress', value);
+    clearTokenInfo();
+    setSocialsPopulated(false);
+    setCachedSocialLinks(null);
+    socialProcessingComplete.current = false;
+    console.log("Token changed, resetting social processing flags");
+  };
+
+  // Add the missing clearTokenInfo function
+  const clearTokenInfo = () => {
+    setTokenInfo(null);
+    setTokenError(null);
+    setFieldErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors['basics.tokenAddress'];
+      return newErrors;
+    });
+  };
+  
   return (
     <Container className="py-5 campaign-creation-container">
       <h1 className="mb-3">Create New Campaign</h1>
@@ -3250,17 +3278,17 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
             
             <Form.Group className="mb-3">
               <Form.Label>Token Address*</Form.Label>
-                <Form.Control 
-                  type="text"
+              <Form.Control 
+                type="text"
                 value={formData.basics.tokenAddress}
-                disabled
-                  readOnly
-                placeholder="Token address will be populated from above"
-                isInvalid={fieldErrors['basics.tokenAddress']}
-                />
+                disabled={true}
+                readOnly={true}
+                className={fieldErrors['basics.tokenAddress'] ? 'is-invalid bg-light' : 'bg-light'}
+                placeholder="0x... or ENS name"
+              />
               <Form.Text className="text-muted mt-2">
                 Enter the token address you want to use for this campaign.
-                </Form.Text>
+              </Form.Text>
               {fieldErrors['basics.tokenAddress'] && (
                 <Form.Control.Feedback type="invalid">
                   {fieldErrors['basics.tokenAddress']}
