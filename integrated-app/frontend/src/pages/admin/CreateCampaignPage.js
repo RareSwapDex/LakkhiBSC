@@ -66,6 +66,10 @@ const CreateCampaignPage = () => {
   const [validatingToken, setValidatingToken] = useState(false);
   const [tokenInfo, setTokenInfo] = useState(null);
   const [tokenError, setTokenError] = useState(null);
+  const [socialsPopulated, setSocialsPopulated] = useState(false);
+  const socialsUpdateRef = useRef(false);
+  const [cachedSocialLinks, setCachedSocialLinks] = useState(null);
+  const socialProcessingComplete = useRef(false);
   
   // Add state variables for token price conversion
   const [tokenPriceUSD, setTokenPriceUSD] = useState(null);
@@ -88,19 +92,12 @@ const CreateCampaignPage = () => {
       projectFundCurrency: 'USD',
       walletAddress: '',
       tokenAddress: '',
-      contractOwnerAddress: '', // Add contract owner address field
+        contractOwnerAddress: '', // Add contract owner address field
       category: '',
       tags: [],
       minContribution: '0.01',
       maxContribution: '',
-      enableAutoRefund: true,
-      // Add social fields to basics section
-      website: '',
-      twitter: '',
-      telegram: '',
-      discord: '',
-      github: '',
-      linkedin: ''
+      enableAutoRefund: true
     },
     story: {
       projectStory: '',
@@ -125,7 +122,8 @@ const CreateCampaignPage = () => {
       telegram: '',
       discord: '',
       github: '',
-      linkedin: ''
+      linkedin: '',
+      instagram: ''
     },
     updates: {
       scheduleCommitment: 'weekly', // weekly, biweekly, monthly
@@ -255,13 +253,41 @@ const CreateCampaignPage = () => {
   
   // Handle social link changes
   const handleSocialChange = (platform, value) => {
-    setFormData(prev => ({
-      ...prev,
-      social: {
+    // Skip the update if the ref flag is set (prevents update loops)
+    if (socialsUpdateRef.current) {
+      console.log(`Skipping handleSocialChange for ${platform} - update in progress`);
+      return;
+    }
+    
+    // Handle manual user input
+    console.log(`handleSocialChange for ${platform} with value:`, value);
+    
+    // Set the update flag
+    socialsUpdateRef.current = true;
+    
+    // Update the form data
+    setFormData(prev => {
+      // Skip if the value is the same to prevent unnecessary re-renders
+      if (prev.social[platform] === value) {
+        socialsUpdateRef.current = false;
+        return prev;
+      }
+      
+      const updatedSocial = {
         ...prev.social,
         [platform]: value
-      }
-    }));
+      };
+      
+      return {
+        ...prev,
+        social: updatedSocial
+      };
+    });
+    
+    // Reset the update flag after a short delay
+    setTimeout(() => {
+      socialsUpdateRef.current = false;
+    }, 100);
   };
   
   // Handle tag input
@@ -450,16 +476,6 @@ const CreateCampaignPage = () => {
         }
         
         setTokenInfo(tokenData);
-        
-        // Immediately fetch social links after successful token validation
-        if (tokenData && tokenData.address) {
-          // Reset flags to make sure social links get processed
-          socialProcessingComplete.current = false;
-          setSocialsPopulated(false);
-          
-          // Fetch social links using the blockchain from token info
-          await fetchTokenSocialLinks(tokenData.address, tokenData.blockchain);
-        }
       } else {
         setTokenError(response.data.message || "Invalid token address");
       }
@@ -476,6 +492,16 @@ const CreateCampaignPage = () => {
     if (formData.basics.tokenAddress) {
       validateToken();
     }
+  };
+  
+  // Clear token info when the token address is manually changed
+  const handleTokenAddressChange = (value) => {
+    handleInputChange('basics', 'tokenAddress', value);
+    clearTokenInfo();
+    setSocialsPopulated(false);
+    setCachedSocialLinks(null);
+    socialProcessingComplete.current = false;
+    console.log("Token changed, resetting social processing flags");
   };
   
   // Replace the blockchainChains array definition with this enhanced version
@@ -997,6 +1023,16 @@ const CreateCampaignPage = () => {
   
   // Add a function to handle token info updates from TokenSelector
   const handleTokenValidation = (tokenInfo) => {
+    // Skip if we've already completed social processing for this token
+    const tokenAddress = tokenInfo?.address?.toLowerCase();
+    const cachedTokenAddress = cachedSocialLinks?.tokenAddress?.toLowerCase();
+    
+    // If this is the same token and processing is already complete, skip social handling
+    if (tokenAddress && cachedTokenAddress && tokenAddress === cachedTokenAddress && socialProcessingComplete.current) {
+      console.log("Skipping social processing - already completed for this token");
+      return;
+    }
+    
     setTokenInfo(tokenInfo);
     
     // If token validation included blockchain info, update the form's blockchain chain
@@ -1008,10 +1044,102 @@ const CreateCampaignPage = () => {
       handleInputChange('basics', 'blockchainChain', 'BSC');
     }
 
-    // Fetch and populate social links if we have valid token info
-    if (tokenInfo && tokenInfo.address) {
-      // Directly fetch and use the social links
-      fetchTokenSocialLinks(tokenInfo.address, tokenInfo.blockchain);
+    // If changing tokens, reset the completion flag
+    if (tokenAddress !== cachedTokenAddress) {
+      socialProcessingComplete.current = false;
+      setSocialsPopulated(false);
+    }
+
+    // Check if we need to fetch new social links
+    const shouldFetchNewLinks = tokenInfo && tokenInfo.address && 
+                             (!socialsPopulated || !cachedSocialLinks) &&
+                             !socialProcessingComplete.current;
+    
+    if (shouldFetchNewLinks && !socialsUpdateRef.current) {
+      // Set the update flag to prevent concurrent operations
+      socialsUpdateRef.current = true;
+      
+      console.log(`Fetching social links for token: ${tokenInfo.symbol}`);
+      
+      // Try to fetch social links from Dexscreener
+      fetchTokenSocialLinks(tokenInfo.address, tokenInfo.blockchain)
+        .then(socialLinks => {
+          if (socialLinks) {
+            // Extract only the fields that have values
+            const filledSocials = {};
+            Object.keys(socialLinks).forEach(key => {
+              if (socialLinks[key] && socialLinks[key].trim() !== '' && 
+                  key in formData.social) {
+                filledSocials[key] = socialLinks[key];
+              }
+            });
+            
+            // Store token address with social links for future comparison
+            filledSocials.tokenAddress = tokenInfo.address;
+            
+            // Only proceed if we found at least one social link
+            if (Object.keys(filledSocials).length > 0) {
+              console.log("Successfully fetched social links:", filledSocials);
+              
+              // Save the links to our persistent cache
+              setCachedSocialLinks(filledSocials);
+              
+              // Apply links to the form immediately
+        setFormData(prev => ({
+          ...prev,
+          social: {
+                  ...prev.social,
+                  website: filledSocials.website || prev.social.website,
+                  twitter: filledSocials.twitter || prev.social.twitter,
+                  telegram: filledSocials.telegram || prev.social.telegram,
+                  discord: filledSocials.discord || prev.social.discord,
+                  github: filledSocials.github || prev.social.github,
+                  linkedin: filledSocials.linkedin || prev.social.linkedin,
+                  instagram: filledSocials.instagram || prev.social.instagram
+          }
+        }));
+        
+              // Mark as populated and complete
+              setSocialsPopulated(true);
+              socialProcessingComplete.current = true;
+              console.log("Social links processing complete - ALL DONE");
+            }
+          }
+        })
+        .catch(error => {
+          console.warn('Error fetching social links:', error);
+        })
+        .finally(() => {
+          // Reset the update flag
+          socialsUpdateRef.current = false;
+        });
+    } else if (cachedSocialLinks && tokenInfo && !socialsUpdateRef.current && !socialProcessingComplete.current) {
+      // If we already have cached links for this token, apply them once
+      console.log("Using cached social links");
+      socialsUpdateRef.current = true;
+      
+      // Apply the cached links
+            setFormData(prev => ({
+              ...prev,
+              social: {
+                ...prev.social,
+          website: cachedSocialLinks.website || prev.social.website,
+          twitter: cachedSocialLinks.twitter || prev.social.twitter,
+          telegram: cachedSocialLinks.telegram || prev.social.telegram,
+          discord: cachedSocialLinks.discord || prev.social.discord,
+          github: cachedSocialLinks.github || prev.social.github,
+          linkedin: cachedSocialLinks.linkedin || prev.social.linkedin,
+          instagram: cachedSocialLinks.instagram || prev.social.instagram
+              }
+            }));
+      
+      // Mark processing as complete
+      socialProcessingComplete.current = true;
+      setSocialsPopulated(true);
+      console.log("Social links processing complete - ALL DONE");
+      
+      // Reset the flag
+      socialsUpdateRef.current = false;
     }
   };
 
@@ -1020,122 +1148,204 @@ const CreateCampaignPage = () => {
     try {
       console.log(`Fetching social links for ${tokenAddress} on ${blockchain}`);
       
-      // Only use Dexscreener for social links
-      await fetchDexscreenerSocials(tokenAddress, blockchain);
-      
-      // Success message
-      console.log('Social links populated from token data');
-      
-      return true;
-    } catch (error) {
-      console.error('Error fetching token social links:', error);
-      return false;
-    }
-  };
-
-  // Fetch social links from Dexscreener
-  const fetchDexscreenerSocials = async (tokenAddress, blockchain) => {
-    try {
+      // Try direct Dexscreener API call
+      console.log(`Direct Dexscreener API call for ${tokenAddress}...`);
       const dexscreenerUrl = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
-      console.log("Dexscreener URL:", dexscreenerUrl);
       
-      const directResponse = await fetch(dexscreenerUrl);
-      const data = await directResponse.json();
+      const response = await fetch(dexscreenerUrl);
+      const data = await response.json();
       
+      console.log("Full Dexscreener response:", JSON.stringify(data));
+      
+      // Initialize empty social links object
+      let socials = {
+        website: '',
+        twitter: '',
+        telegram: '',
+        discord: '',
+        github: '',
+        linkedin: '',
+        instagram: ''
+      };
+      
+      // First check if there's structured data in pairs
       if (data && data.pairs && data.pairs.length > 0) {
-        const pair = data.pairs[0];
-        console.log("Pair data found:", JSON.stringify(pair));
-        
-        // DIRECT FORM STATE UPDATE - Initialize socials in basics tab instead of social tab
-        setFormData(prev => ({
-          ...prev,
-          basics: {
-            ...prev.basics,
-            website: "",
-            twitter: "",
-            telegram: "",
-            discord: "",
-            github: "",
-            linkedin: ""
-          }
-        }));
-        
-        // Process websites (website, Instagram etc.)
-        if (pair.websites && Array.isArray(pair.websites)) {
-          console.log("Websites found:", JSON.stringify(pair.websites));
+        // Check each pair for social links
+        for (const pair of data.pairs) {
+          console.log("Checking pair info:", pair.pairAddress);
           
-          // Find main website
-          const websiteEntry = pair.websites.find(site => site.label === "Website" && site.url);
-          if (websiteEntry) {
-            console.log("Setting website to:", websiteEntry.url);
-            setFormData(prev => ({
-              ...prev,
-              basics: {
-                ...prev.basics,
-                website: websiteEntry.url
-              }
-            }));
-          }
-        }
-        
-        // Process social links (Twitter, Telegram, etc.)
-        if (pair.socials && Array.isArray(pair.socials)) {
-          console.log("Socials found:", JSON.stringify(pair.socials));
-          
-          for (const social of pair.socials) {
-            if (social.type && social.url) {
-              console.log(`Found social: ${social.type} = ${social.url}`);
+          // Parse the pair's 'info' field which sometimes contains JSON stringified data
+          if (pair.info && typeof pair.info === 'string') {
+            try {
+              const infoData = JSON.parse(pair.info);
+              console.log("Parsed pair info:", infoData);
               
-              let fieldName = "";
-              
-              // Map social type to form field name
-              if (social.type === "twitter") {
-                fieldName = "twitter";
-              } else if (social.type === "telegram") {
-                fieldName = "telegram";
-              } else if (social.type === "discord") {
-                fieldName = "discord";
-              } else if (social.type === "github") {
-                fieldName = "github";
-              } else if (social.type === "linkedin") {
-                fieldName = "linkedin";
-              }
-              
-              // Only update if we have a matching field
-              if (fieldName) {
-                console.log(`Updating ${fieldName} field with ${social.url}`);
-                setFormData(prev => ({
-                  ...prev,
-                  basics: {
-                    ...prev.basics,
-                    [fieldName]: social.url
+              // Try to extract social links from the parsed info
+              if (infoData.websites) {
+                // Extract website links
+                for (const website of infoData.websites) {
+                  if (website.label === "Website" && website.url) {
+                    socials.website = website.url;
                   }
-                }));
+                }
               }
+              
+              if (infoData.socials) {
+                // Extract social media links
+                for (const social of infoData.socials) {
+                  if (social.type === "twitter" && social.url) {
+                    socials.twitter = social.url;
+                  } else if (social.type === "telegram" && social.url) {
+                    socials.telegram = social.url;
+                  } else if (social.type === "discord" && social.url) {
+                    socials.discord = social.url;
+                  } else if (social.type === "github" && social.url) {
+                    socials.github = social.url;
+                  } else if (social.type === "linkedin" && social.url) {
+                    socials.linkedin = social.url;
+                  } else if (social.type === "instagram" && social.url) {
+                    socials.instagram = social.url;
+                  }
+                }
+              }
+              
+              // If we found at least one social link, stop searching
+              if (socials.website || socials.twitter || socials.telegram || socials.discord || socials.github || socials.linkedin || socials.instagram) {
+                console.log("Found social links in parsed info:", socials);
+                break;
+              }
+            } catch (parseError) {
+              console.log("Error parsing pair info:", parseError);
+            }
+          }
+          
+          // Also check standard baseToken fields
+          if (pair.baseToken) {
+            if (pair.baseToken.website) socials.website = pair.baseToken.website;
+            if (pair.baseToken.twitter) socials.twitter = `https://twitter.com/${pair.baseToken.twitter}`;
+            if (pair.baseToken.telegram) socials.telegram = `https://t.me/${pair.baseToken.telegram}`;
+            
+            // If we found any links, break the loop
+            if (socials.website || socials.twitter || socials.telegram) {
+              console.log("Found social links in baseToken:", socials);
+              break;
             }
           }
         }
-        
-        console.log("Social form data updated directly in basics tab!");
-        return true;
-      } else {
-        console.log("No pairs found in Dexscreener response");
-        return false;
       }
+      
+      // Try to extract from raw response as a fallback
+      if (!socials.website && !socials.twitter && !socials.telegram) {
+        console.log("Attempting to extract social links from raw response...");
+        const responseStr = JSON.stringify(data);
+        
+        // Extract website URLs
+        const websiteMatches = responseStr.match(/"label"\s*:\s*"Website"\s*,\s*"url"\s*:\s*"([^"]+)"/g);
+        if (websiteMatches && websiteMatches.length > 0) {
+          const urlMatch = websiteMatches[0].match(/"url"\s*:\s*"([^"]+)"/);
+          if (urlMatch && urlMatch[1]) {
+            socials.website = urlMatch[1];
+            console.log("Extracted website:", socials.website);
+          }
+        }
+        
+        // Extract Twitter URLs
+        const twitterMatches = responseStr.match(/"type"\s*:\s*"twitter"\s*,\s*"url"\s*:\s*"([^"]+)"/g);
+        if (twitterMatches && twitterMatches.length > 0) {
+          const urlMatch = twitterMatches[0].match(/"url"\s*:\s*"([^"]+)"/);
+          if (urlMatch && urlMatch[1]) {
+            socials.twitter = urlMatch[1];
+            console.log("Extracted Twitter:", socials.twitter);
+          }
+        }
+        
+        // Extract Telegram URLs
+        const telegramMatches = responseStr.match(/"type"\s*:\s*"telegram"\s*,\s*"url"\s*:\s*"([^"]+)"/g);
+        if (telegramMatches && telegramMatches.length > 0) {
+          const urlMatch = telegramMatches[0].match(/"url"\s*:\s*"([^"]+)"/);
+          if (urlMatch && urlMatch[1]) {
+            socials.telegram = urlMatch[1];
+            console.log("Extracted Telegram:", socials.telegram);
+          }
+        }
+        
+        // Extract Discord URLs
+        const discordMatches = responseStr.match(/"type"\s*:\s*"discord"\s*,\s*"url"\s*:\s*"([^"]+)"/g);
+        if (discordMatches && discordMatches.length > 0) {
+          const urlMatch = discordMatches[0].match(/"url"\s*:\s*"([^"]+)"/);
+          if (urlMatch && urlMatch[1]) {
+            socials.discord = urlMatch[1];
+            console.log("Extracted Discord:", socials.discord);
+          }
+        }
+        
+        // Extract Instagram URLs
+        const instagramMatches = responseStr.match(/"label"\s*:\s*"Instagram"\s*,\s*"url"\s*:\s*"([^"]+)"/g);
+        if (instagramMatches && instagramMatches.length > 0) {
+          const urlMatch = instagramMatches[0].match(/"url"\s*:\s*"([^"]+)"/);
+          if (urlMatch && urlMatch[1]) {
+            socials.instagram = urlMatch[1];
+            console.log("Extracted Instagram:", socials.instagram);
+          }
+        }
+      }
+      
+      console.log("Final social links from Dexscreener:", socials);
+      return socials;
     } catch (error) {
-      console.error('Error fetching from Dexscreener:', error);
-      return false;
+      console.error('Error fetching token social links from Dexscreener:', error);
+      // Return empty social links object on error
+      return {
+        website: '',
+        twitter: '',
+        telegram: '',
+        discord: '',
+        github: '',
+        linkedin: '',
+        instagram: ''
+      };
     }
   };
-
-  // Fetch social links from Dextools - Disabled due to API limitations
-  const fetchDextoolsSocials = async (tokenAddress, blockchain) => {
-    // Dextools API is typically limited and requires authentication
-    // For now, this function will just return empty social links
-    // A proper implementation would require a server-side proxy with authentication
-    console.log('Dextools social links not available without authentication');
-    return {};
-  };
+  
+  // Replace the useEffect for social links
+  useEffect(() => {
+    // Skip completely if social processing is already complete
+    if (socialProcessingComplete.current) {
+      return;
+    }
+    
+    // If we have cached social links and a token, but social fields aren't fully populated yet
+    if (cachedSocialLinks && tokenInfo && tokenInfo.address && !socialsPopulated && !socialsUpdateRef.current) {
+      // Set flag to prevent concurrent updates
+      socialsUpdateRef.current = true;
+      
+      // Apply cached links directly to form data
+      setFormData(prev => {
+        // Merge the cached links with existing social data
+        const updatedSocial = {
+          ...prev.social,
+          ...cachedSocialLinks
+        };
+        
+        // Mark as populated to prevent further updates
+        setSocialsPopulated(true);
+        
+        // Mark processing as complete - this is a permanent flag
+        socialProcessingComplete.current = true;
+        
+        console.log("Social links processing complete - ALL DONE");
+        
+        return {
+          ...prev,
+          social: updatedSocial
+        };
+      });
+    } else if (socialsPopulated && cachedSocialLinks) {
+      // If socials are already populated, permanently mark processing as complete
+      socialProcessingComplete.current = true;
+      console.log("Social links already populated - ALL DONE");
+    }
+  }, [tokenInfo, cachedSocialLinks, socialsPopulated]);
   
   // Add this function to get prices from open, CORS-friendly APIs
   const getTokenPrice = async (tokenSymbol) => {
@@ -1966,6 +2176,7 @@ const CreateCampaignPage = () => {
   
   // Add collapsed state for templates
   const [templateSectionCollapsed, setTemplateSectionCollapsed] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(true);
   const [selectedTemplateData, setSelectedTemplateData] = useState(null);
   
   // Add state to track if pre-filled fields have been reviewed
@@ -2507,6 +2718,8 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
   // Function to reset template selection
   const handleChangeTemplate = () => {
     setTemplateSectionCollapsed(false);
+    setShowTemplates(true);
+    setSelectedTemplateData(null);
   }
   
   // Milestone tab content
@@ -2977,27 +3190,6 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
     </Tab>
   );
   
-  // Clear token info when the token address is manually changed
-  const handleTokenAddressChange = (value) => {
-    handleInputChange('basics', 'tokenAddress', value);
-    clearTokenInfo();
-    setSocialsPopulated(false);
-    setCachedSocialLinks(null);
-    socialProcessingComplete.current = false;
-    console.log("Token changed, resetting social processing flags");
-  };
-
-  // Add the missing clearTokenInfo function
-  const clearTokenInfo = () => {
-    setTokenInfo(null);
-    setTokenError(null);
-    setFieldErrors(prev => {
-      const newErrors = { ...prev };
-      delete newErrors['basics.tokenAddress'];
-      return newErrors;
-    });
-  };
-  
   return (
     <Container className="py-5 campaign-creation-container">
       <h1 className="mb-3">Create New Campaign</h1>
@@ -3230,10 +3422,14 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
                 {/* Enhanced Token Selector */}
             <TokenSelector 
               value={formData.basics.tokenAddress}
-              onChange={(value) => handleInputChange('basics', 'tokenAddress', value)}
+              onChange={handleTokenAddressChange}
                 onValidate={handleTokenValidation}
                 onReset={() => {
                   setTokenInfo(null);
+                  setSocialsPopulated(false);
+                  setCachedSocialLinks(null);
+                  socialProcessingComplete.current = false;
+                  console.log("Token reset, clearing social processing");
                   // Reset to BSC when token is cleared
                   handleInputChange('basics', 'blockchainChain', 'BSC');
                     
@@ -3278,17 +3474,19 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
             
             <Form.Group className="mb-3">
               <Form.Label>Token Address*</Form.Label>
-              <Form.Control 
-                type="text"
+                <Form.Control 
+                  type="text"
                 value={formData.basics.tokenAddress}
-                disabled={true}
-                readOnly={true}
-                className={fieldErrors['basics.tokenAddress'] ? 'is-invalid bg-light' : 'bg-light'}
+                onChange={(e) => handleTokenAddressChange(e.target.value)}
+                onBlur={handleTokenBlur}
+                required
                 placeholder="0x... or ENS name"
-              />
+                readOnly
+                disabled
+                />
               <Form.Text className="text-muted mt-2">
                 Enter the token address you want to use for this campaign.
-              </Form.Text>
+                </Form.Text>
               {fieldErrors['basics.tokenAddress'] && (
                 <Form.Control.Feedback type="invalid">
                   {fieldErrors['basics.tokenAddress']}
@@ -3315,71 +3513,19 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
               </Alert>
             )}
             
-            {/* Add Social Media section */}
-            <h4 className="mt-4 mb-3">Social Media & Web Presence</h4>
-            <p className="text-muted mb-3">These fields will be automatically populated when a token is validated, but you can edit them as needed.</p>
-
-            <FormField
-              label="Website"
-              type="url"
-              value={formData.basics.website || ''}
-              onChange={(e) => handleInputChange('basics', 'website', e.target.value)}
-              placeholder="https://yourproject.com"
-            />
-
-            <FormField
-              label="Twitter"
-              type="url"
-              value={formData.basics.twitter || ''}
-              onChange={(e) => handleInputChange('basics', 'twitter', e.target.value)}
-              placeholder="https://x.com/yourproject"
-            />
-
-            <FormField
-              label="Telegram"
-              type="url"
-              value={formData.basics.telegram || ''}
-              onChange={(e) => handleInputChange('basics', 'telegram', e.target.value)}
-              placeholder="https://t.me/yourproject"
-            />
-
-            <FormField
-              label="Discord"
-              type="url"
-              value={formData.basics.discord || ''}
-              onChange={(e) => handleInputChange('basics', 'discord', e.target.value)}
-              placeholder="https://discord.gg/yourproject"
-            />
-
-            <FormField
-              label="GitHub"
-              type="url"
-              value={formData.basics.github || ''}
-              onChange={(e) => handleInputChange('basics', 'github', e.target.value)}
-              placeholder="https://github.com/yourproject"
-            />
-
-            <FormField
-              label="LinkedIn"
-              type="url"
-              value={formData.basics.linkedin || ''}
-              onChange={(e) => handleInputChange('basics', 'linkedin', e.target.value)}
-              placeholder="https://linkedin.com/company/yourproject"
-            />
-
-            <FormField
-              label="Brief Description"
-              as="textarea"
-              rows={3}
-              value={formData.basics.projectDescription}
-              onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
-              required
-              placeholder="Briefly describe your project (max 300 characters)"
-              maxLength={300}
-              validate={(val) => val && val.trim().length >= 10}
-              errorMessage="Description must be at least 10 characters"
-              error={fieldErrors['basics.projectDescription']}
-            />
+                <FormField
+                  label="Brief Description"
+                as="textarea"
+                rows={3}
+                value={formData.basics.projectDescription}
+                onChange={(e) => handleInputChange('basics', 'projectDescription', e.target.value)}
+                required
+                placeholder="Briefly describe your project (max 300 characters)"
+                maxLength={300}
+                  validate={(val) => val && val.trim().length >= 10}
+                  errorMessage="Description must be at least 10 characters"
+                  error={fieldErrors['basics.projectDescription']}
+              />
             
             <Row>
               <Col md={6}>
@@ -3790,6 +3936,16 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
                     placeholder="https://linkedin.com/company/yourproject"
                   />
               </Form.Group>
+              
+              <Form.Group className="mb-3">
+                <Form.Label>Instagram</Form.Label>
+                  <Form.Control
+                    type="url"
+                    value={formData.social.instagram}
+                    onChange={(e) => handleSocialChange('instagram', e.target.value)}
+                    placeholder="https://instagram.com/yourproject"
+                  />
+              </Form.Group>
                 
                 <div className="d-flex justify-content-between">
                     <Button 
@@ -4140,4 +4296,4 @@ Our ${template.title.toLowerCase()} is already live and actively trading. ${getR
   );
 };
 
-export default CreateCampaignPage; still
+export default CreateCampaignPage; 
